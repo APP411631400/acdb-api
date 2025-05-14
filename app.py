@@ -132,6 +132,10 @@ def get_all_records():
         print(f"❌ 查詢失敗：{e}")
         return jsonify({"status": "fail", "error": str(e)}), 500
 
+@app.route("/")
+def home():
+    return "✅ ACDB API is running! You can POST to /upload, /delete or GET /records"
+
 # ✅ 啟動 Flask 伺服器（允許外部裝置存取）
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
