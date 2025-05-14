@@ -11,3 +11,5 @@ oracledb==3.1.0
 pycparser==2.22
 pyodbc==5.2.0
 Werkzeug==3.1.3
+gunicorn
+
