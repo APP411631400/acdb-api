@@ -30,7 +30,7 @@ def upload():
         user_id = data.get("userId", "guest")
         image_base64 = data.get("imageBase64")
 
-        # ✅ 強制使用前端傳來的拍照時間，避免使用新加坡時間
+        # ✅ 時間（前端傳入 captureTime）
         capture_time_str = data.get("captureTime")
         if not capture_time_str:
             return jsonify({"status": "fail", "error": "缺少 captureTime"}), 400
@@ -40,17 +40,19 @@ def upload():
         except Exception:
             return jsonify({"status": "fail", "error": "captureTime 格式錯誤"}), 400
 
-        # ✅ 圖片處理（Base64 轉二進位）
+        # ✅ 圖片轉為 BLOB
         image_data = base64.b64decode(image_base64) if image_base64 else None
 
-        # ✅ 寫入資料庫
+        # ✅ 連接資料庫並執行 insert + 取得主鍵 ID
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO dbo.門市商品 (
                 商品名稱, 價格, 位置描述, 座標, 圖片, 時間, 條碼, 來源, 使用者ID
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            )
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             name,
             price,
@@ -63,9 +65,9 @@ def upload():
             user_id
         ))
 
-        # ✅ 回傳主鍵 id（供前端刪除時使用）
-        cursor.execute("SELECT SCOPE_IDENTITY()")
-        new_id = cursor.fetchone()[0]
+        new_id_row = cursor.fetchone()
+        new_id = new_id_row[0] if new_id_row else None
+        print(f"✅ 寫入成功，主鍵 ID：{new_id}")
 
         conn.commit()
         cursor.close()
