@@ -86,10 +86,13 @@ def upload():
 def delete():
     try:
         data = request.json
-        record_id = data.get("id")
+        print("🧪 收到刪除請求：", data)
 
-        if not record_id:
-            return jsonify({"status": "fail", "error": "缺少 id"}), 400
+        # ✅ 強制轉為 int（避免 JSON 傳字串型別）
+        try:
+            record_id = int(data.get("id"))
+        except:
+            return jsonify({"status": "fail", "error": "id 不是有效數字"}), 400
 
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
