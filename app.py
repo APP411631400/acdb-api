@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
+from auth import auth
 import base64
 import pyodbc
 from datetime import datetime
 
 app = Flask(__name__)
+app.register_blueprint(auth)  # ✅ 註冊登入路由
 
 # ✅ 資料庫連線字串（請勿公開）
 conn_str = (
