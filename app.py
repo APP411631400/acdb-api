@@ -152,6 +152,38 @@ def get_all_records():
         print(f"❌ 查詢失敗：{e}")
         return jsonify({"status": "fail", "error": str(e)}), 500
 
+# ✅ 根據 id 傳出圖片（base64 格式）
+@app.route("/image/<int:record_id>", methods=["GET"])
+def get_image_by_id(record_id):
+    try:
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT 圖片 FROM dbo.門市商品 WHERE id = ?
+        """, (record_id,))
+        row = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        if row and row[0]:
+            image_blob = row[0]
+            image_base64 = base64.b64encode(image_blob).decode("utf-8")
+            return jsonify({
+                "status": "success",
+                "imageBase64": image_base64
+            })
+        else:
+            return jsonify({
+                "status": "fail",
+                "error": "查無圖片或圖片為空"
+            }), 404
+
+    except Exception as e:
+        print(f"❌ 圖片查詢錯誤：{e}")
+        return jsonify({"status": "fail", "error": str(e)}), 500
+
 # ✅ API 狀態首頁
 @app.route("/")
 def home():
