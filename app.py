@@ -135,7 +135,14 @@ def get_all_records():
 
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
-        result = [dict(zip(columns, row)) for row in rows]
+
+        result = []
+        for row in rows:
+            record = dict(zip(columns, row))
+            # ✅ 明確轉換「時間」欄位為 ISO 格式字串（給前端用）
+            if isinstance(record["時間"], datetime):
+                record["時間"] = record["時間"].isoformat()
+            result.append(record)
 
         cursor.close()
         conn.close()
