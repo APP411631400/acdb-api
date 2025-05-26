@@ -131,8 +131,9 @@ def get_all_records():
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
 
+        # ✅ 加入 位置描述 欄位（店家名稱）
         cursor.execute("""
-            SELECT id, 商品名稱, 價格, 座標, 時間, 條碼, 來源
+            SELECT id, 商品名稱, 價格, 位置描述, 座標, 時間, 條碼, 來源
             FROM dbo.門市商品
             ORDER BY 時間 DESC
         """)
@@ -143,7 +144,7 @@ def get_all_records():
         result = []
         for row in rows:
             record = dict(zip(columns, row))
-            # ✅ 明確轉換「時間」欄位為 ISO 格式字串（給前端用）
+            # ✅ 時間欄位轉換為字串（ISO 8601）
             if isinstance(record["時間"], datetime):
                 record["時間"] = record["時間"].isoformat()
             result.append(record)
