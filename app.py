@@ -188,6 +188,68 @@ def get_image_by_id(record_id):
         print(f"❌ 圖片查詢錯誤：{e}")
         return jsonify({"status": "fail", "error": str(e)}), 500
 
+
+# ✅ 更新指定紀錄（修改商品名稱、價格、店家名稱）
+@app.route("/update", methods=["POST"])
+def update():
+    try:
+        data = request.json
+        print("📝 收到更新請求：", data)
+
+        # 取得主鍵 ID
+        try:
+            record_id = int(data.get("id"))
+        except:
+            return jsonify({"status": "fail", "error": "缺少或無效的 id"}), 400
+
+        # ✅ 取得要更新的欄位
+        new_name = data.get("name")
+        new_price = data.get("price")
+        new_store = data.get("store")
+
+        if new_name is None and new_price is None and new_store is None:
+            return jsonify({"status": "fail", "error": "未提供任何更新資料"}), 400
+
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+
+        # ✅ 建立更新語句與參數
+        update_fields = []
+        params = []
+
+        if new_name is not None:
+            update_fields.append("商品名稱 = ?")
+            params.append(new_name)
+        if new_price is not None:
+            update_fields.append("價格 = ?")
+            params.append(float(new_price))
+        if new_store is not None:
+            update_fields.append("位置描述 = ?")
+            params.append(new_store)
+
+        params.append(record_id)  # 加入 id 當作 WHERE 條件
+
+        cursor.execute(f"""
+            UPDATE dbo.門市商品
+            SET {', '.join(update_fields)}
+            WHERE id = ?
+        """, params)
+
+        if cursor.rowcount == 0:
+            return jsonify({"status": "fail", "error": f"查無 id {record_id}"}), 404
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"status": "success", "updated_id": record_id})
+
+    except Exception as e:
+        print(f"❌ 更新錯誤：{e}")
+        return jsonify({"status": "fail", "error": str(e)}), 500
+
+
+
 # ✅ API 狀態首頁
 @app.route("/")
 def home():
