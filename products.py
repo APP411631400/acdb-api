@@ -20,11 +20,11 @@ def get_all_products():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT TOP 1000 商品名稱,
-                momo_價格, momo_網址,
-                pchome_價格, pchome_網址,
-                博客來_價格, 博客來_網址,
-                屈臣氏_價格, 屈臣氏_網址,
-                康是美_價格, 康是美_網址,
+                momo_圖片, momo_價格, momo_網址,
+                pchome_圖片, pchome_價格, pchome_網址,
+                博客來_圖片, 博客來_價格, 博客來_網址,
+                屈臣氏_圖片, 屈臣氏_價格, 屈臣氏_網址,
+                康是美_圖片, 康是美_價格, 康是美_網址,
                 商品ID
             FROM dbo.比價商品
         """)
@@ -36,7 +36,7 @@ def get_all_products():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ✅ 搜尋比價商品（模糊搜尋）
+
 @products.route('/products/search', methods=['GET'])
 def search_products():
     query = request.args.get('query', '')
@@ -45,15 +45,15 @@ def search_products():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT TOP 100 商品名稱,
-                momo_價格, momo_網址,
-                pchome_價格, pchome_網址,
-                博客來_價格, 博客來_網址,
-                屈臣氏_價格, 屈臣氏_網址,
-                康是美_價格, 康是美_網址,
+                momo_圖片, momo_價格, momo_網址,
+                pchome_圖片, pchome_價格, pchome_網址,
+                博客來_圖片, 博客來_價格, 博客來_網址,
+                屈臣氏_圖片, 屈臣氏_價格, 屈臣氏_網址,
+                康是美_圖片, 康是美_價格, 康是美_網址,
                 商品ID
             FROM dbo.比價商品
             WHERE 商品名稱 LIKE ?
-        """, (f'%{query}%',))  # ✅ 注意這裡用 tuple 傳參
+        """, (f'%{query}%',))
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
         result = [dict(zip(columns, row)) for row in rows]
