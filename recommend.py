@@ -82,7 +82,6 @@ def ask_gpt(prompt):
     except Exception as e:
         return f"❌ GPT 請求失敗：{e}"
 
-# ✅ 主路由
 
 @recommend.route("/recommend_card", methods=["POST"])
 def recommend_card():
