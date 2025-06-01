@@ -5,10 +5,10 @@ import pyodbc
 recommend = Blueprint("recommend", __name__)
 
 # ✅ Azure OpenAI 設定（請改成你自己的）
-AZURE_OPENAI_API_KEY = "AflfAee4CjmRImjTYvN5NjNt1uKCy5uI6GOyDxPKS0fAWyyZ8GTqJQQJ99BEACYeBjFXJ3w3AAABACOGnjCD"
-AZURE_OPENAI_ENDPOINT = "https://gptservice01.openai.azure.com/"
-AZURE_DEPLOYMENT_NAME = "gpt-35-turbo"
-AZURE_API_VERSION = "2023-07-01-preview"
+AZURE_OPENAI_API_KEY = "5wF3ExfuuguyO5aMZU498ojH5BV3PFKuTEJ53eHpA8Ucd3PdGM5SJQQJ99BFACfhMk5XJ3w3AAABACOGtifd"
+AZURE_OPENAI_ENDPOINT = "https://gptservice-eastus2.openai.azure.com/"
+AZURE_DEPLOYMENT_NAME = "gpt-4o"
+AZURE_API_VERSION = "2025-01-01-preview"
 
 # ✅ 資料庫連線字串（與 cards.py 同一份）
 conn_str = (
