@@ -73,7 +73,6 @@ def ask_gpt(prompt):
             ],
             "temperature": 0.3,
             "max_tokens": 500
-            "model": AZURE_DEPLOYMENT_NAME,  # ✅ 這一行是關鍵
         }
 
         response = requests.post(url, headers=headers, json=body)
