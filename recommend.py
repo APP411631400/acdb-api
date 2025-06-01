@@ -19,7 +19,8 @@ conn_str = (
     "PWD=Crazydog888"
 )
 
-# ✅ 卡片資料精簡格式（為降低 token 數量而設計）
+# ✅ 卡片資料格式精簡
+
 def format_card(card):
     return f"""
 卡名：{card['卡名']}，銀行：{card['銀行名稱']}，回饋：
@@ -29,7 +30,8 @@ def format_card(card):
 上限條件：{card['專屬優惠'] or '無'}，百大特店：{card['百大特店'] or '無'}
 """
 
-# ✅ Prompt 模板（清楚指定 GPT 邏輯運算與格式）
+# ✅ Prompt 建立
+
 def build_prompt(store, amount, cards_summary):
     return f"""
 你是一位信用卡回饋推薦顧問，請幫我選出最適合的信用卡來進行此次消費：
@@ -55,27 +57,33 @@ def build_prompt(store, amount, cards_summary):
 {cards_summary}
 """
 
-# ✅ GPT Chat Completion API 呼叫（Azure OpenAI）
+# ✅ 呼叫 GPT API
+
 def ask_gpt(prompt):
-    url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": AZURE_OPENAI_API_KEY
-    }
-    body = {
-        "messages": [
-            {"role": "system", "content": "你是一位信用卡回饋推薦 AI 顧問"},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 500
-    }
+    try:
+        url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": AZURE_OPENAI_API_KEY
+        }
+        body = {
+            "messages": [
+                {"role": "system", "content": "你是一位信用卡回饋推薦 AI 顧問"},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 500
+        }
 
-    response = requests.post(url, headers=headers, json=body)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+        response = requests.post(url, headers=headers, json=body)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
 
-# ✅ 主路由 /recommend_card
+    except Exception as e:
+        return f"❌ GPT 請求失敗：{e}"
+
+# ✅ 主路由
+
 @recommend.route("/recommend_card", methods=["POST"])
 def recommend_card():
     try:
@@ -83,25 +91,30 @@ def recommend_card():
         store = data.get("store", "未知通路")
         amount = data.get("amount", 1000)
 
-        # 讀取資料庫卡片資料
+        # 🧩 撈資料庫
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
-        query = "SELECT * FROM dbo.[信用卡資料]"
+        query = """
+        SELECT [卡名], [銀行名稱], [一般優惠], [一般優惠條件], [額外優惠], [額外優惠條件],
+               [優惠方案1], [優惠方案2], [優惠方案3],
+               [專屬優惠], [百大特店]
+        FROM dbo.[信用卡資料]
+        """
         rows = cursor.execute(query).fetchall()
         columns = [col[0] for col in cursor.description]
-
-        # 結構化卡片資料
         cards = [
             {col: str(val) if val is not None else '' for col, val in zip(columns, row)}
             for row in rows
         ]
 
-        # 格式化為 GPT 可讀文字格式
-        formatted_cards = [format_card(card) for card in cards]
-        prompt = build_prompt(store, amount, "\n".join(formatted_cards))
+        if not cards:
+            return jsonify({"error": "資料庫中找不到任何卡片"}), 400
 
-        # 呼叫 GPT 回傳結果
+        # 🧾 準備 prompt 並請 GPT 回覆
+        cards_summary = "\n\n".join([format_card(card) for card in cards])
+        prompt = build_prompt(store, amount, cards_summary)
         result = ask_gpt(prompt)
+
         return jsonify({"result": result})
 
     except Exception as e:
