@@ -61,7 +61,7 @@ def build_prompt(store, amount, cards_summary):
 
 def ask_gpt(prompt):
     try:
-        url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
+        url = f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{AZURE_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
         headers = {
             "Content-Type": "application/json",
             "api-key": AZURE_OPENAI_API_KEY
