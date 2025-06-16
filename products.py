@@ -115,7 +115,7 @@ def crawl_momo(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         # momo 商品頁常見價格 class（視商品頁可能會不同）
-        price_tag = soup.select_one("span.special")
+        price_tag = soup.select_one(".priceArea span") or soup.select_one("span.special")
         return price_tag.text.strip() if price_tag else "查無價格"
     except Exception as e:
         print(f"[momo 爬蟲錯誤] {e}")
@@ -128,7 +128,7 @@ def crawl_pchome(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         # PChome 商品頁通常價格在 .price-container > span
-        price_tag = soup.select_one(".price-container span")
+        price_tag = soup.select_one(".price span") or soup.select_one(".o-price__content")
         return price_tag.text.strip() if price_tag else "查無價格"
     except Exception as e:
         print(f"[pchome 爬蟲錯誤] {e}")
@@ -154,7 +154,7 @@ def crawl_watsons(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         # 屈臣氏價格常在 .price-value 或 .productPrice
-        price_tag = soup.select_one(".price-value") or soup.select_one(".productPrice")
+        price_tag = soup.select_one(".price-value") or soup.select_one(".prodPrice") or soup.select_one(".productPrice")
         return price_tag.text.strip() if price_tag else "查無價格"
     except Exception as e:
         print(f"[watsons 爬蟲錯誤] {e}")
@@ -167,7 +167,8 @@ def crawl_cosmed(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         # 康是美價格常見 class
-        price_tag = soup.select_one(".prod-sale-price") or soup.select_one(".price")  # 可能會變動
+        price_tag = soup.select_one(".prod-sale-price") or soup.select_one(".prodPrice") or soup.select_one(".price")
+  # 可能會變動
         return price_tag.text.strip() if price_tag else "查無價格"
     except Exception as e:
         print(f"[cosmed 爬蟲錯誤] {e}")
