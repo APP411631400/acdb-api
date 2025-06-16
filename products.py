@@ -57,6 +57,11 @@ def search_products():
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
         result = [dict(zip(columns, row)) for row in rows]
+        conn.close()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ✅ 即時價格比價（根據商品 ID 爬五家價格）
 @products.route('/product_detail', methods=['GET'])
