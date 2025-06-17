@@ -12,6 +12,15 @@ conn_str = (
     "PWD=Crazydog888"
 )
 
+# ---------- 共用小工具 ------------------------------------------------
+def safe_crawl(func, url):
+    """
+    • 如果 url 為空或不是 http 開頭 → 直接回傳 '無'
+    • 否則呼叫真正的爬蟲函式
+    這樣就不會再出現 Invalid URL / Expecting value 等錯誤
+    """
+    return func(url) if url and url.startswith("http") else "無"
+
 # ✅ 取得所有比價商品資料（前端顯示）
 @products.route('/products', methods=['GET'])
 def get_all_products():
@@ -82,22 +91,20 @@ def get_product_detail():
 
         name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
 
-        # ✅ 回傳即時價格（不儲存資料庫，只做查詢）
         result = {
-            "商品ID": product_id,
+            "商品ID":  product_id,
             "商品名稱": name,
-            "momo": crawl_momo(momo_url) if momo_url else "無",
-            "pchome": crawl_pchome(pchome_url) if pchome_url else "無",
-            "博客來": crawl_books(books_url) if books_url else "無",
-            "屈臣氏": crawl_watsons(watsons_url) if watsons_url else "無",
-            "康是美": crawl_cosmed(cosmed_url) if cosmed_url else "無"
+            "momo"  : safe_crawl(crawl_momo,   momo_url),
+            "pchome": safe_crawl(crawl_pchome, pchome_url),
+            "博客來": safe_crawl(crawl_books,  books_url),
+            "屈臣氏": safe_crawl(crawl_watsons,watsons_url),
+            "康是美": safe_crawl(crawl_cosmed, cosmed_url)
         }
 
         conn.close()
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 # -------------------- ⬇⬇⬇ 爬蟲函式區 ⬇⬇⬇ --------------------
 
@@ -118,10 +125,13 @@ def crawl_momo(url: str) -> str:
         i_code = re.search(r"i_code=(\d+)", url).group(1)
         api = f"https://m.momoshop.com.tw/exapp/api/v1/product/{i_code}?_dataVersion=V1.2.0"
         res = requests.get(api, headers={**HEADERS, "Referer": url}, timeout=6)
+        if res.status_code != 200:
+            print("[momo] HTTP", res.status_code)
+            return "查無價格"
         price = res.json().get("price", {}).get("salePrice")
         return f"{price} 元" if price else "查無價格"
     except Exception as e:
-        print("[momo] error →", e)  # 會印 HTTP 狀態或 JSON 結構
+        print("[momo] error →", e)
         return "爬蟲失敗"
 
 # ---------- PChome ----------------------------------------------
@@ -130,6 +140,9 @@ def crawl_pchome(url: str) -> str:
         pid  = url.rstrip("/").split("/")[-1].split("?")[0]
         api  = f"https://ecapi.pchome.com.tw/ecshop/prodapi/v2/prod/{pid}?fields=Price"
         res  = requests.get(api, headers=HEADERS, timeout=6)
+        if res.status_code != 200:
+            print("[pchome] HTTP", res.status_code)
+            return "查無價格"
         price = res.json()[pid]["Price"]["P"]
         return f"{price} 元" if price else "查無價格"
     except Exception as e:
@@ -151,7 +164,7 @@ def crawl_books(url: str) -> str:
 def crawl_watsons(url: str) -> str:
     try:
         html = requests.get(url, headers=HEADERS, timeout=6).text
-        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)  # ← 加 re.S
+        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)
         if not m:
             return "查無價格"
         data  = json.loads(m.group(1))
@@ -165,11 +178,10 @@ def crawl_watsons(url: str) -> str:
 def crawl_cosmed(url: str) -> str:
     try:
         html = requests.get(url, headers=HEADERS, timeout=6).text
-        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)  # ← 加 re.S
+        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)
         if not m:
             return "查無價格"
         data = json.loads(m.group(1))
-        # 新舊頁面兼容：data.Price（新）或 productSalePrice（舊）
         price = (
             data["state"]["product"]["data"].get("Price") or
             data["state"]["product"].get("productSalePrice")
