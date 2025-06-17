@@ -3,7 +3,7 @@ import pyodbc
 
 products = Blueprint('products', __name__)
 
-# ✅ 資料庫連線設定
+# ✅ 資料庫連線
 conn_str = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=shoppingsystem.database.windows.net;"
