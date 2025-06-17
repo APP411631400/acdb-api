@@ -12,7 +12,7 @@ conn_str = (
     "PWD=Crazydog888"
 )
 
-# ✅ 取得所有比價商品資料（前端顯示用）
+# ✅ 取得所有比價商品資料（前端顯示）
 @products.route('/products', methods=['GET'])
 def get_all_products():
     try:

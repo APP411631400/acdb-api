@@ -259,5 +259,5 @@ def home():
     return "✅ ACDB API is running! You can POST to /upload, /delete or GET /records"
 
 # ✅ 啟動伺服器（允許外部連線）
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+# if __name__ == "__main__":
+#    app.run(host="0.0.0.0", port=5000, debug=True)
