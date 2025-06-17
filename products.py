@@ -103,73 +103,80 @@ def get_product_detail():
 
 import requests
 from bs4 import BeautifulSoup
+import json
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0 Safari/537.36"
 }
 
-# ✅ momo 商品價格爬蟲
+# ✅ momo 商品價格 API 爬蟲
 def crawl_momo(url):
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        # momo 商品頁常見價格 class（視商品頁可能會不同）
-        price_tag = soup.select_one("span.price__main-value")
-        return price_tag.text.strip() if price_tag else "查無價格"
+        i_code = url.split("i_code=")[-1].split("&")[0]
+        api_url = f"https://m.momoshop.com.tw/exapp/api/v1/product/{i_code}?_dataVersion=V1.2.0"
+        res = requests.get(api_url, headers=headers, timeout=5)
+        data = res.json()
+        price = data.get("price", {}).get("salePrice")
+        return f"{price} 元" if price else "查無價格"
     except Exception as e:
         print(f"[momo 爬蟲錯誤] {e}")
         return "爬蟲失敗"
 
-# ✅ pchome 商品價格爬蟲（24h 賣場商品頁）
+# ✅ pchome 商品價格 API 爬蟲
 def crawl_pchome(url):
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        # PChome 商品頁通常價格在 .price-container > span
-        price_tag = soup.select_one("span.o-price__content")
-        return price_tag.text.strip() if price_tag else "查無價格"
+        product_id = url.split("/")[-1]
+        api_url = f"https://ecapi.pchome.com.tw/ecshop/prodapi/v2/prod/{product_id}&fields=Price"
+        res = requests.get(api_url, headers=headers, timeout=5)
+        data = res.json()
+        price = data[product_id]["Price"]["P"]
+        return f"{price} 元" if price else "查無價格"
     except Exception as e:
         print(f"[pchome 爬蟲錯誤] {e}")
         return "爬蟲失敗"
 
-# ✅ 博客來 商品價格爬蟲
+# ✅ 博客來（靜態 HTML 抓價格）
 def crawl_books(url):
     try:
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-
-        # 博客來價格通常在 .price > strong 或 .selling span
         price_tag = soup.select_one("ul.price li strong") or soup.select_one("span.price")
         return price_tag.text.strip() if price_tag else "查無價格"
     except Exception as e:
         print(f"[books 爬蟲錯誤] {e}")
         return "爬蟲失敗"
 
-# ✅ 屈臣氏 商品價格爬蟲
+# ✅ 屈臣氏：價格藏在 script JSON 裡（需解析 window.__NUXT__）
 def crawl_watsons(url):
     try:
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-
-        # 屈臣氏價格常在 .price-value 或 .productPrice
-        price_tag = soup.select_one(".price-value") or soup.select_one(".prodPrice") or soup.select_one(".productPrice")
-        return price_tag.text.strip() if price_tag else "查無價格"
+        script_tag = soup.find("script", text=lambda t: t and "__NUXT__" in t)
+        if script_tag:
+            text = script_tag.string or ""
+            json_str = text.split("window.__NUXT__=")[-1].rsplit(";</script>", 1)[0]
+            data = json.loads(json_str)
+            # 找價格：會隨結構變動
+            price = data["state"]["product"]["items"][0]["price"]
+            return f"{price} 元" if price else "查無價格"
+        return "查無價格"
     except Exception as e:
         print(f"[watsons 爬蟲錯誤] {e}")
         return "爬蟲失敗"
 
-# ✅ 康是美 商品價格爬蟲
+# ✅ 康是美：價格在 window.__NUXT__ JSON 內
 def crawl_cosmed(url):
     try:
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-
-        # 康是美價格常見 class
-        price_tag = soup.select_one(".prod-sale-price") or soup.select_one(".prodPrice") or soup.select_one(".price")
-  # 可能會變動
-        return price_tag.text.strip() if price_tag else "查無價格"
+        script_tag = soup.find("script", text=lambda t: t and "__NUXT__=" in t)
+        if script_tag:
+            text = script_tag.string or ""
+            json_str = text.split("window.__NUXT__=")[-1].rsplit(";</script>", 1)[0]
+            data = json.loads(json_str)
+            price = data["state"]["product"]["productSalePrice"]
+            return f"{price} 元" if price else "查無價格"
+        return "查無價格"
     except Exception as e:
         print(f"[cosmed 爬蟲錯誤] {e}")
         return "爬蟲失敗"
