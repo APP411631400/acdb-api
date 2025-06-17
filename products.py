@@ -101,83 +101,75 @@ def get_product_detail():
 
 # -------------------- ⬇⬇⬇ 爬蟲函式區 ⬇⬇⬇ --------------------
 
-import requests
+import re, json, requests
 from bs4 import BeautifulSoup
-import json
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0 Safari/537.36"
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36"
+    )
 }
 
-# ✅ momo 商品價格 API 爬蟲
-def crawl_momo(url):
+# ---------- momo -------------------------------------------------
+def crawl_momo(url: str) -> str:
     try:
-        i_code = url.split("i_code=")[-1].split("&")[0]
-        api_url = f"https://m.momoshop.com.tw/exapp/api/v1/product/{i_code}?_dataVersion=V1.2.0"
-        res = requests.get(api_url, headers=headers, timeout=5)
-        data = res.json()
-        price = data.get("price", {}).get("salePrice")
+        i_code = re.search(r"i_code=(\d+)", url).group(1)
+        api = f"https://m.momoshop.com.tw/exapp/api/v1/product/{i_code}?_dataVersion=V1.2.0"
+        res = requests.get(api, headers={**HEADERS, "Referer": url}, timeout=6)
+        price = res.json().get("price", {}).get("salePrice")
         return f"{price} 元" if price else "查無價格"
     except Exception as e:
-        print(f"[momo 爬蟲錯誤] {e}")
+        print("[momo] error →", e)
         return "爬蟲失敗"
 
-# ✅ pchome 商品價格 API 爬蟲
-def crawl_pchome(url):
+# ---------- PChome ----------------------------------------------
+def crawl_pchome(url: str) -> str:
     try:
-        product_id = url.split("/")[-1]
-        api_url = f"https://ecapi.pchome.com.tw/ecshop/prodapi/v2/prod/{product_id}&fields=Price"
-        res = requests.get(api_url, headers=headers, timeout=5)
-        data = res.json()
-        price = data[product_id]["Price"]["P"]
+        pid = url.rstrip("/").split("/")[-1].split("?")[0]
+        api = f"https://ecapi.pchome.com.tw/ecshop/prodapi/v2/prod/{pid}?fields=Price"
+        res = requests.get(api, headers=HEADERS, timeout=6)
+        price = res.json()[pid]["Price"]["P"]          # 現價
         return f"{price} 元" if price else "查無價格"
     except Exception as e:
-        print(f"[pchome 爬蟲錯誤] {e}")
+        print("[pchome] error →", e)
         return "爬蟲失敗"
 
-# ✅ 博客來（靜態 HTML 抓價格）
-def crawl_books(url):
+# ---------- 博客來 ----------------------------------------------
+def crawl_books(url: str) -> str:
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        price_tag = soup.select_one("ul.price li strong") or soup.select_one("span.price")
-        return price_tag.text.strip() if price_tag else "查無價格"
+        soup = BeautifulSoup(requests.get(url, headers=HEADERS, timeout=6).text, "html.parser")
+        tag = soup.select_one("ul.price li strong") or soup.select_one("span.price")
+        return tag.text.strip() if tag else "查無價格"
     except Exception as e:
-        print(f"[books 爬蟲錯誤] {e}")
+        print("[books] error →", e)
         return "爬蟲失敗"
 
-# ✅ 屈臣氏：價格藏在 script JSON 裡（需解析 window.__NUXT__）
-def crawl_watsons(url):
+# ---------- Watsons ---------------------------------------------
+def crawl_watsons(url: str) -> str:
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        script_tag = soup.find("script", text=lambda t: t and "__NUXT__" in t)
-        if script_tag:
-            text = script_tag.string or ""
-            json_str = text.split("window.__NUXT__=")[-1].rsplit(";</script>", 1)[0]
-            data = json.loads(json_str)
-            # 找價格：會隨結構變動
-            price = data["state"]["product"]["items"][0]["price"]
-            return f"{price} 元" if price else "查無價格"
-        return "查無價格"
+        html = requests.get(url, headers=HEADERS, timeout=6).text
+        m = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html)
+        if not m:
+            return "查無價格"
+        data = json.loads(m.group(1))
+        price = data["state"]["product"]["items"][0]["price"]        # 路徑已核對
+        return f"{price} 元" if price else "查無價格"
     except Exception as e:
-        print(f"[watsons 爬蟲錯誤] {e}")
+        print("[watsons] error →", e)
         return "爬蟲失敗"
 
-# ✅ 康是美：價格在 window.__NUXT__ JSON 內
-def crawl_cosmed(url):
+# ---------- Cosmed ----------------------------------------------
+def crawl_cosmed(url: str) -> str:
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        script_tag = soup.find("script", text=lambda t: t and "__NUXT__=" in t)
-        if script_tag:
-            text = script_tag.string or ""
-            json_str = text.split("window.__NUXT__=")[-1].rsplit(";</script>", 1)[0]
-            data = json.loads(json_str)
-            price = data["state"]["product"]["productSalePrice"]
-            return f"{price} 元" if price else "查無價格"
-        return "查無價格"
+        html = requests.get(url, headers=HEADERS, timeout=6).text
+        m = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html)
+        if not m:
+            return "查無價格"
+        data = json.loads(m.group(1))
+        price = data["state"]["product"]["data"]["Price"]            # 最新路徑
+        return f"{price} 元" if price else "查無價格"
     except Exception as e:
-        print(f"[cosmed 爬蟲錯誤] {e}")
+        print("[cosmed] error →", e)
         return "爬蟲失敗"
-
