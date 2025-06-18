@@ -3,6 +3,7 @@ from auth import auth
 from cards import cards
 from products import products
 from recommend import recommend
+from business import business_bp
 import base64
 import pyodbc
 from datetime import datetime
@@ -12,6 +13,7 @@ app.register_blueprint(auth)  # ✅ 註冊登入路由
 app.register_blueprint(cards)
 app.register_blueprint(products)
 app.register_blueprint(recommend)
+app.register_blueprint(business_bp)
 
 # ✅ 資料庫連線字串（請勿公開）
 conn_str = (
