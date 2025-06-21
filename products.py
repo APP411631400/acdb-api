@@ -12,14 +12,6 @@ conn_str = (
     "PWD=Crazydog888"
 )
 
-# ---------- 共用小工具 ------------------------------------------------
-def safe_crawl(func, url):
-    """
-    • 如果 url 為空或不是 http 開頭 → 直接回傳 '無'
-    • 否則呼叫真正的爬蟲函式
-    這樣就不會再出現 Invalid URL / Expecting value 等錯誤
-    """
-    return func(url) if url and url.startswith("http") else "無"
 
 # ✅ 取得所有比價商品資料（前端顯示）
 @products.route('/products', methods=['GET'])
@@ -72,7 +64,7 @@ def search_products():
         return jsonify({'error': str(e)}), 500
 
 
-# ✅ 即時價格比價（根據商品 ID 爬五家價格）
+ # ✅ 只回傳網址，前端自己爬
 @products.route('/product_detail', methods=['GET'])
 def get_product_detail():
     product_id = request.args.get("id", "")
@@ -81,112 +73,29 @@ def get_product_detail():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT 商品名稱,
-                   momo_網址, pchome_網址, 博客來_網址, 屈臣氏_網址, 康是美_網址
+                   momo_網址   AS momo_url,
+                   pchome_網址 AS pchome_url,
+                   博客來_網址 AS books_url,
+                   屈臣氏_網址 AS watsons_url,
+                   康是美_網址 AS cosmed_url
             FROM dbo.比價商品
             WHERE 商品ID = ?
         """, (product_id,))
         row = cursor.fetchone()
+        conn.close()
+
         if not row:
             return jsonify({'error': '查無此商品'}), 404
 
         name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
-
-        result = {
-            "商品ID":  product_id,
-            "商品名稱": name,
-            "momo"  : safe_crawl(crawl_momo,   momo_url),
-            "pchome": safe_crawl(crawl_pchome, pchome_url),
-            "博客來": safe_crawl(crawl_books,  books_url),
-            "屈臣氏": safe_crawl(crawl_watsons,watsons_url),
-            "康是美": safe_crawl(crawl_cosmed, cosmed_url)
-        }
-
-        conn.close()
-        return jsonify(result)
+        return jsonify({
+            "商品ID":     product_id,
+            "商品名稱":   name,
+            "momo_url":   momo_url,
+            "pchome_url": pchome_url,
+            "books_url":  books_url,
+            "watsons_url":watsons_url,
+            "cosmed_url": cosmed_url,
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# -------------------- ⬇⬇⬇ 爬蟲函式區 ⬇⬇⬇ --------------------
-
-import re, json, requests
-from bs4 import BeautifulSoup
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    )
-}
-
-# ---------- momo -------------------------------------------------
-def crawl_momo(url: str) -> str:
-    try:
-        i_code = re.search(r"i_code=(\d+)", url).group(1)
-        api = f"https://m.momoshop.com.tw/exapp/api/v1/product/{i_code}?_dataVersion=V1.2.0"
-        res = requests.get(api, headers={**HEADERS, "Referer": url}, timeout=6)
-        if res.status_code != 200:
-            print("[momo] HTTP", res.status_code)
-            return "查無價格"
-        price = res.json().get("price", {}).get("salePrice")
-        return f"{price} 元" if price else "查無價格"
-    except Exception as e:
-        print("[momo] error →", e)
-        return "爬蟲失敗"
-
-# ---------- PChome ----------------------------------------------
-def crawl_pchome(url: str) -> str:
-    try:
-        pid  = url.rstrip("/").split("/")[-1].split("?")[0]
-        api  = f"https://ecapi.pchome.com.tw/ecshop/prodapi/v2/prod/{pid}?fields=Price"
-        res  = requests.get(api, headers=HEADERS, timeout=6)
-        if res.status_code != 200:
-            print("[pchome] HTTP", res.status_code)
-            return "查無價格"
-        price = res.json()[pid]["Price"]["P"]
-        return f"{price} 元" if price else "查無價格"
-    except Exception as e:
-        print("[pchome] error →", e)
-        return "爬蟲失敗"
-
-# ---------- 博客來 ----------------------------------------------
-def crawl_books(url: str) -> str:
-    try:
-        html = requests.get(url, headers=HEADERS, timeout=6).text
-        soup = BeautifulSoup(html, "html.parser")
-        tag  = soup.select_one("ul.price li strong") or soup.select_one("span.price")
-        return tag.text.strip() if tag else "查無價格"
-    except Exception as e:
-        print("[books] error →", e)
-        return "爬蟲失敗"
-
-# ---------- Watsons ---------------------------------------------
-def crawl_watsons(url: str) -> str:
-    try:
-        html = requests.get(url, headers=HEADERS, timeout=6).text
-        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)
-        if not m:
-            return "查無價格"
-        data  = json.loads(m.group(1))
-        price = data["state"]["product"]["items"][0]["price"]
-        return f"{price} 元" if price else "查無價格"
-    except Exception as e:
-        print("[watsons] error →", e)
-        return "爬蟲失敗"
-
-# ---------- Cosmed ----------------------------------------------
-def crawl_cosmed(url: str) -> str:
-    try:
-        html = requests.get(url, headers=HEADERS, timeout=6).text
-        m    = re.search(r"window\.__NUXT__\s*=\s*(\{.*});", html, re.S)
-        if not m:
-            return "查無價格"
-        data = json.loads(m.group(1))
-        price = (
-            data["state"]["product"]["data"].get("Price") or
-            data["state"]["product"].get("productSalePrice")
-        )
-        return f"{price} 元" if price else "查無價格"
-    except Exception as e:
-        print("[cosmed] error →", e)
-        return "爬蟲失敗"
