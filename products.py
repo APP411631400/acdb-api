@@ -70,105 +70,50 @@ def search_products():
 def get_product_detail():
     product_id = request.args.get("id", "")
     try:
-        # 1. 從資料庫拿各家網址
-        conn = pyodbc.connect(conn_str)
+        # 1. 从 DB 取出 商品ID、商品名稱 和 五家网址
+        conn   = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT 商品名稱,
-                   momo_網址   AS momo_url,
-                   pchome_網址 AS pchome_url,
-                   博客來_網址 AS books_url,
-                   屈臣氏_網址 AS watsons_url,
-                   康是美_網址 AS cosmed_url
+            SELECT
+              [商品ID],
+              [商品名稱],
+              [momo_網址]   AS momo_url,
+              [pchome_網址] AS pchome_url,
+              [博客來_網址] AS books_url,
+              [屈臣氏_網址] AS watsons_url,
+              [康是美_網址] AS cosmed_url
             FROM dbo.比價商品
             WHERE 商品ID = ?
         """, (product_id,))
         row = cursor.fetchone()
-
-        # ← 在這裡加 debug 印出
-        if row:
-            name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
-            print("[DEBUG] 讀到的五家 URL：")
-            print(" momo_url   =", momo_url)
-            print(" pchome_url =", pchome_url)
-            print(" books_url  =", books_url)
-            print(" watsons_url=", watsons_url)
-            print(" cosmed_url =", cosmed_url)
-
-
         conn.close()
 
         if not row:
-            return jsonify({'error': '查無此商品'}), 404
+            return jsonify({"error": "查無此商品"}), 404
 
-        name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
+        # 确保 unpack 顺序跟 SELECT 一致
+        _id, name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
 
-        # 2. 用 Playwright 打開瀏覽器，巡迴五家網址去抓價格
-        result = {"商品ID": product_id, "商品名稱": name}
-        urls = {
-            'momo':    momo_url,
-            'pchome':  pchome_url,
-            '博客來':   books_url,
-            '屈臣氏':   watsons_url,
-            '康是美':   cosmed_url,
-        }
+        # DEBUG：打印看到底拿到了什么 URL
+        print("[DEBUG] 拿到的五家 URL：")
+        print("  momo   =", momo_url)
+        print("  pchome =", pchome_url)
+        print("  books  =", books_url)
+        print("  watsons=", watsons_url)
+        print("  cosmed =", cosmed_url)
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            for platform, url in urls.items():
-                if not url or not url.startswith("http"):
-                    result[platform] = "無"
-                    continue
+        # 你可以先只回传这些 URL 给前端确认
+        return jsonify({
+            "商品ID":     _id,
+            "商品名稱":   name,
+            "debug_urls": {
+                "momo":    momo_url,
+                "pchome":  pchome_url,
+                "books":   books_url,
+                "watsons": watsons_url,
+                "cosmed":  cosmed_url
+            }
+        })
 
-                page = browser.new_page()
-                try:
-                    # 等待網路靜止（所有資源載入完成）
-                    page.goto(url, timeout=15000, wait_until="networkidle")
-                    print(f"[DEBUG] {platform} title:", page.title())
-
-                    if platform == 'momo':
-                        page.wait_for_selector("span.price__main-value", timeout=15000)
-                        text = page.locator("span.price__main-value").first.text_content()
-
-                    elif platform == 'pchome':
-                        page.wait_for_selector("span.o-price__content", timeout=15000)
-                        text = page.locator("span.o-price__content").first.text_content()
-
-                    elif platform == '博客來':
-                        # 先嘗試新版 selector，失敗再 fallback
-                        try:
-                            page.wait_for_selector("ul.price li strong", timeout=10000)
-                            text = page.locator("ul.price li strong").first.text_content()
-                        except:
-                            page.wait_for_selector("span.price", timeout=5000)
-                            text = page.locator("span.price").first.text_content()
-
-                    elif platform == '屈臣氏':
-                        page.wait_for_selector(".price-value, .productPrice", timeout=15000)
-                        # 優先拿 .price-value
-                        text = (
-                            page.locator(".price-value").first.text_content()
-                            or page.locator(".productPrice").first.text_content()
-                        )
-
-                    else:  # 康是美
-                        page.wait_for_selector(".prod-sale-price, .price", timeout=15000)
-                        text = (
-                            page.locator(".prod-sale-price").first.text_content()
-                            or page.locator(".price").first.text_content()
-                        )
-
-                    # 清理非數字字元
-                    num = re.sub(r'[^0-9.]', '', (text or '').strip())
-                    result[platform] = f"{num} 元" if num else "查無價格"
-
-                except Exception:
-                    result[platform] = "查無價格"
-                finally:
-                    page.close()
-
-            browser.close()
-
-        return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
