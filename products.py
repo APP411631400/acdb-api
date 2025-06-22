@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import pyodbc
 from playwright.sync_api import sync_playwright
-
+import re
 
 products = Blueprint('products', __name__)
 
@@ -85,13 +85,14 @@ def get_product_detail():
         """, (product_id,))
         row = cursor.fetchone()
         conn.close()
+
         if not row:
             return jsonify({'error': '查無此商品'}), 404
 
-        _, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
+        name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
 
         # 2. 用 Playwright 打開瀏覽器，巡迴五家網址去抓價格
-        result = {"商品ID": product_id, "商品名稱": row[0]}
+        result = {"商品ID": product_id, "商品名稱": name}
         urls = {
             'momo':    momo_url,
             'pchome':  pchome_url,
@@ -102,39 +103,57 @@ def get_product_detail():
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            for name, url in urls.items():
+            for platform, url in urls.items():
                 if not url or not url.startswith("http"):
-                    result[name] = "無"
+                    result[platform] = "無"
                     continue
+
                 page = browser.new_page()
                 try:
-                    page.goto(url, timeout=15000)
-                    # 根據各家電商的 CSS selector 抓價格
-                    if name == 'momo':
-                        text = page.locator("span.price__main-value").text_content()
-                    elif name == 'pchome':
-                        text = page.locator("span.o-price__content").text_content()
-                    elif name == '博客來':
-                        text = page.locator("ul.price li strong").text_content()
-                    elif name == '屈臣氏':
+                    # 等待網路靜止（所有資源載入完成）
+                    page.goto(url, timeout=15000, wait_until="networkidle")
+
+                    if platform == 'momo':
+                        page.wait_for_selector("span.price__main-value", timeout=15000)
+                        text = page.locator("span.price__main-value").first.text_content()
+
+                    elif platform == 'pchome':
+                        page.wait_for_selector("span.o-price__content", timeout=15000)
+                        text = page.locator("span.o-price__content").first.text_content()
+
+                    elif platform == '博客來':
+                        # 先嘗試新版 selector，失敗再 fallback
+                        try:
+                            page.wait_for_selector("ul.price li strong", timeout=10000)
+                            text = page.locator("ul.price li strong").first.text_content()
+                        except:
+                            page.wait_for_selector("span.price", timeout=5000)
+                            text = page.locator("span.price").first.text_content()
+
+                    elif platform == '屈臣氏':
+                        page.wait_for_selector(".price-value, .productPrice", timeout=15000)
+                        # 優先拿 .price-value
                         text = (
-                            page.locator(".price-value").text_content()
-                            or page.locator(".productPrice").text_content()
+                            page.locator(".price-value").first.text_content()
+                            or page.locator(".productPrice").first.text_content()
                         )
+
                     else:  # 康是美
+                        page.wait_for_selector(".prod-sale-price, .price", timeout=15000)
                         text = (
-                            page.locator(".prod-sale-price").text_content()
-                            or page.locator(".price").text_content()
+                            page.locator(".prod-sale-price").first.text_content()
+                            or page.locator(".price").first.text_content()
                         )
 
                     # 清理非數字字元
-                    import re
-                    price = re.sub(r'[^0-9.]', '', text.strip())
-                    result[name] = f"{price} 元" if price else "查無價格"
+                    num = re.sub(r'[^0-9.]', '', (text or '').strip())
+                    result[platform] = f"{num} 元" if num else "查無價格"
+
                 except Exception:
-                    result[name] = "查無價格"
+                    result[platform] = "查無價格"
                 finally:
                     page.close()
+
             browser.close()
 
         return jsonify(result)
