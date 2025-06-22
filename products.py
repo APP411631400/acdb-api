@@ -117,11 +117,15 @@ def get_product_detail():
                     elif name == '博客來':
                         text = page.locator("ul.price li strong").text_content()
                     elif name == '屈臣氏':
-                        text = page.locator(".price-value").text_content()
-                                or page.locator(".productPrice").text_content()
++                       text = (
++                           page.locator(".price-value").text_content()
++                           or page.locator(".productPrice").text_content()
++                       )
                     else:  # 康是美
-                        text = page.locator(".prod-sale-price").text_content()
-                                or page.locator(".price").text_content()
++                       text = (
++                           page.locator(".prod-sale-price").text_content()
++                           or page.locator(".price").text_content()
++                       )
 
                     # 清理非數字字元
                     import re
@@ -134,6 +138,5 @@ def get_product_detail():
             browser.close()
 
         return jsonify(result)
-
     except Exception as e:
         return jsonify({'error': str(e)}), 500
