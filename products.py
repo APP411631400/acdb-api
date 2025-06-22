@@ -66,11 +66,11 @@ def search_products():
         return jsonify({'error': str(e)}), 500
 
 
- @products.route('/product_detail', methods=['GET'])
+@products.route('/product_detail', methods=['GET'])
 def get_product_detail():
     product_id = request.args.get("id", "")
     try:
-        # 1. 先從資料庫拿各家網址
+        # 1. 從資料庫拿各家網址
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         cursor.execute("""
@@ -124,7 +124,8 @@ def get_product_detail():
                                 or page.locator(".price").text_content()
 
                     # 清理非數字字元
-                    price = text.strip().replace(RegExp(r'[^0-9.]'), '')
+                    import re
+                    price = re.sub(r'[^0-9.]', '', text.strip())
                     result[name] = f"{price} 元" if price else "查無價格"
                 except Exception:
                     result[name] = "查無價格"
