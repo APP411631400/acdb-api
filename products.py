@@ -112,6 +112,7 @@ def get_product_detail():
                 try:
                     # 等待網路靜止（所有資源載入完成）
                     page.goto(url, timeout=15000, wait_until="networkidle")
+                    print(f"[DEBUG] {platform} title:", page.title())
 
                     if platform == 'momo':
                         page.wait_for_selector("span.price__main-value", timeout=15000)
