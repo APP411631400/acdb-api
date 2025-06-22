@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 import pyodbc
+from playwright.sync_api import sync_playwright
+
 
 products = Blueprint('products', __name__)
 
@@ -64,11 +66,11 @@ def search_products():
         return jsonify({'error': str(e)}), 500
 
 
- # ✅ 只回傳網址，前端自己爬
-@products.route('/product_detail', methods=['GET'])
+ @products.route('/product_detail', methods=['GET'])
 def get_product_detail():
     product_id = request.args.get("id", "")
     try:
+        # 1. 先從資料庫拿各家網址
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         cursor.execute("""
@@ -83,19 +85,54 @@ def get_product_detail():
         """, (product_id,))
         row = cursor.fetchone()
         conn.close()
-
         if not row:
             return jsonify({'error': '查無此商品'}), 404
 
-        name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
-        return jsonify({
-            "商品ID":     product_id,
-            "商品名稱":   name,
-            "momo_url":   momo_url,
-            "pchome_url": pchome_url,
-            "books_url":  books_url,
-            "watsons_url":watsons_url,
-            "cosmed_url": cosmed_url,
-        })
+        _, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
+
+        # 2. 用 Playwright 打開瀏覽器，巡迴五家網址去抓價格
+        result = {"商品ID": product_id, "商品名稱": row[0]}
+        urls = {
+            'momo':    momo_url,
+            'pchome':  pchome_url,
+            '博客來':   books_url,
+            '屈臣氏':   watsons_url,
+            '康是美':   cosmed_url,
+        }
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            for name, url in urls.items():
+                if not url or not url.startswith("http"):
+                    result[name] = "無"
+                    continue
+                page = browser.new_page()
+                try:
+                    page.goto(url, timeout=15000)
+                    # 根據各家電商的 CSS selector 抓價格
+                    if name == 'momo':
+                        text = page.locator("span.price__main-value").text_content()
+                    elif name == 'pchome':
+                        text = page.locator("span.o-price__content").text_content()
+                    elif name == '博客來':
+                        text = page.locator("ul.price li strong").text_content()
+                    elif name == '屈臣氏':
+                        text = page.locator(".price-value").text_content()
+                                or page.locator(".productPrice").text_content()
+                    else:  # 康是美
+                        text = page.locator(".prod-sale-price").text_content()
+                                or page.locator(".price").text_content()
+
+                    # 清理非數字字元
+                    price = text.strip().replace(RegExp(r'[^0-9.]'), '')
+                    result[name] = f"{price} 元" if price else "查無價格"
+                except Exception:
+                    result[name] = "查無價格"
+                finally:
+                    page.close()
+            browser.close()
+
+        return jsonify(result)
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
