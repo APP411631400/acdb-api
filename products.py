@@ -84,6 +84,18 @@ def get_product_detail():
             WHERE 商品ID = ?
         """, (product_id,))
         row = cursor.fetchone()
+
+        # ← 在這裡加 debug 印出
+        if row:
+            name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
+            print("[DEBUG] 讀到的五家 URL：")
+            print(" momo_url   =", momo_url)
+            print(" pchome_url =", pchome_url)
+            print(" books_url  =", books_url)
+            print(" watsons_url=", watsons_url)
+            print(" cosmed_url =", cosmed_url)
+
+
         conn.close()
 
         if not row:
