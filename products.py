@@ -175,13 +175,6 @@ def get_product_detail():
                 price_num  = re.sub(r'[^\d]', '', price_text)
                 return price_num or None
 
-            # 在 Render 或其他環境的主流程
-            with sync_playwright() as p:
-                iphone = p.devices['iPhone 13']       # 透過 p.devices 取得裝置設定 :contentReference[oaicite:3]{index=3}
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(**iphone)  
-                page    = context.new_page()
-                price   = scrape_momo_price(page, desktop_url)
 
 
 
