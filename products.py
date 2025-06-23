@@ -160,31 +160,10 @@ def get_product_detail():
                     price_text = None
                     
                     if platform == 'momo':
-                        # momo 需要特殊處理 - 重新開啟 JavaScript
-                        if not page.context.java_script_enabled:
-                            page.close()
-                            # 為 momo 單獨開一個支援 JS 的 context
-                            js_context = browser.new_context(
-                                user_agent=(
-                                    "Mozilla/5.0 (X11; Linux x86_64) "
-                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                    "Chrome/124.0 Safari/537.36"
-                                ),
-                                locale="zh-TW",
-                                viewport={"width": 1024, "height": 768},
-                                java_script_enabled=True  # 為 momo 開啟 JS
-                            )
-                            page = js_context.new_page()
-                            page.goto(url, timeout=30000, wait_until="networkidle")
-                            time.sleep(3)  # 等待 JS 載入完成
-                        
                         selectors = [
                             "span.price__main-value",
-                            ".prdPrice", 
-                            ".price",
-                            "[data-testid*='price']",
-                            ".product-price-value",
-                            ".final-price"
+                            ".prdPrice",
+                            ".price"
                         ]
                         
                     elif platform == 'pchome':
@@ -218,48 +197,29 @@ def get_product_detail():
                     # 嘗試多個選擇器
                     for selector in selectors:
                         try:
-                            # 對 momo 使用更長的等待時間
-                            wait_time = 10000 if platform == 'momo' else 5000
-                            page.wait_for_selector(selector, timeout=wait_time)
-                            
                             element = page.locator(selector).first
                             if element.is_visible():
                                 price_text = element.text_content()
-                                print(f"{platform} 找到價格文字: '{price_text}'")  # debug
-                                if price_text and len(price_text.strip()) > 1:  # 確保不只是單個數字
+                                if price_text:
                                     break
                         except:
                             continue
                     
                     # 如果還是沒抓到，嘗試用正規表達式從整個頁面找
-                    if not price_text or (platform == 'momo' and len(price_text.strip()) <= 1):
-                        print(f"{platform} 使用正規表達式搜尋價格")  # debug
+                    if not price_text:
                         import re
-                        # 尋找台幣價格模式 - 針對 momo 加強
-                        if platform == 'momo':
-                            price_patterns = [
-                                r'momo價[：:\s]*\$?([0-9,]+)',
-                                r'售價[：:\s]*\$?([0-9,]+)',
-                                r'價格[：:\s]*\$?([0-9,]+)',
-                                r'NT\$\s*([0-9,]+)',
-                                r'\$([0-9,]{3,})',  # 至少3位數的價格
-                                r'([0-9,]{3,})\s*元',
-                            ]
-                        else:
-                            price_patterns = [
-                                r'NT\$\s*([0-9,]+)',
-                                r'\$\s*([0-9,]+)',
-                                r'價格[：:\s]*([0-9,]+)',
-                                r'售價[：:\s]*([0-9,]+)',
-                            ]
+                        # 尋找台幣價格模式
+                        price_patterns = [
+                            r'NT\$\s*([0-9,]+)',
+                            r'\$\s*([0-9,]+)',
+                            r'價格[：:\s]*([0-9,]+)',
+                            r'售價[：:\s]*([0-9,]+)',
+                        ]
                         
                         for pattern in price_patterns:
-                            matches = re.findall(pattern, content)
-                            if matches:
-                                # 找最大的數字，通常是正確的價格
-                                max_price = max(matches, key=lambda x: int(x.replace(',', '')))
-                                price_text = max_price
-                                print(f"{platform} 正規表達式找到價格: {price_text}")
+                            match = re.search(pattern, content)
+                            if match:
+                                price_text = match.group(1)
                                 break
                     
                     # 清理數字
