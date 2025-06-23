@@ -230,38 +230,47 @@ def get_product_detail():
                 
                 # 新增：價格清理函數
                 def clean_pchome_price(price_text):
-                    """清理 PChome 價格文字，處理特價原價合併的問題"""
+                    """處理 PChome 特價和劃線原價被一起抓取的問題"""
                     import re
                     
-                    # 移除所有非數字字符，只保留數字
+                    # 移除非數字字符
                     numbers_only = re.sub(r'[^0-9]', '', price_text)
                     
-                    # 如果數字長度異常長（超過 6 位數），可能是特價原價合併
-                    if len(numbers_only) > 6:
-                        # 嘗試從原始文字中找出所有價格數字
-                        price_numbers = re.findall(r'([0-9,]+)', price_text)
+                    # 檢查是否為重複數字（如 268268）
+                    if len(numbers_only) >= 6 and len(numbers_only) % 2 == 0:
+                        half = len(numbers_only) // 2
+                        first_half = numbers_only[:half]
+                        second_half = numbers_only[half:]
                         
-                        if len(price_numbers) >= 2:
-                            # 如果有多個價格，通常第一個是特價，取第一個
-                            first_price = price_numbers[0].replace(',', '')
-                            if first_price.isdigit() and len(first_price) <= 6:
-                                return first_price
-                        
-                        # 如果是連續數字且很長，嘗試拆分
-                        # 例如 268268 -> 268, 399399 -> 399
-                        if len(numbers_only) % 2 == 0:  # 偶數長度
-                            half = len(numbers_only) // 2
-                            first_half = numbers_only[:half]
-                            second_half = numbers_only[half:]
-                            
-                            # 如果兩半相同，取其中一個
-                            if first_half == second_half:
-                                return first_half
-                            
-                            # 如果不同，取較小的（通常是特價）
-                            if first_half.isdigit() and second_half.isdigit():
-                                return min(first_half, second_half, key=int)
+                        # 如果兩半完全相同，就是重複價格，取一個
+                        if first_half == second_half and first_half.isdigit():
+                            return first_half
                     
+                    # 如果長度是奇數或不是重複，可能是兩個不同價格連在一起
+                    # 例如 179195 (179特價 + 195原價)
+                    if len(numbers_only) >= 5:
+                        # 嘗試各種分割方式，找出最合理的特價
+                        best_price = None
+                        
+                        for split_pos in range(2, len(numbers_only)-1):
+                            left_part = numbers_only[:split_pos]
+                            right_part = numbers_only[split_pos:]
+                            
+                            if (left_part.isdigit() and right_part.isdigit() and
+                                10 <= int(left_part) <= 9999 and 10 <= int(right_part) <= 9999):
+                                
+                                # 取較小的作為特價
+                                if int(left_part) < int(right_part):
+                                    if not best_price or int(left_part) < int(best_price):
+                                        best_price = left_part
+                                elif int(right_part) < int(left_part):
+                                    if not best_price or int(right_part) < int(best_price):
+                                        best_price = right_part
+                        
+                        if best_price:
+                            return best_price
+                    
+                    # 其他情況直接返回
                     return numbers_only
                 
                 try:
