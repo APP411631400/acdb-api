@@ -4,6 +4,7 @@ from playwright.sync_api import sync_playwright
 import re
 import time
 import random
+from urllib.parse import urlparse, parse_qs
 
 products = Blueprint('products', __name__)
 
@@ -154,267 +155,34 @@ def get_product_detail():
                         java_script_enabled=False
                     )
 
-            # 強化的 momo 爬蟲 - 反反爬蟲版本
-            def scrape_momo_price_enhanced(page, url):
+            def scrape_momo_price(page, desktop_url):
+                # 1. 解析 i_code
+                parsed = urlparse(desktop_url)
+                params = parse_qs(parsed.query)
+                code = params.get('i_code', [None])[0]
+                if not code:
+                    print("無法解析 i_code")
+                    return None
+
+                # 2. 組出行動版靜態頁 URL
+                mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
+                print(f"行動版 URL：{mobile_url}")
+
+                # 3. 載入並抓價
+                page.goto(mobile_url, timeout=60000, wait_until="domcontentloaded")
                 try:
-                    print(f"正在抓取 momo: {url}")
-                    
-                    # 第一步：設定更多反檢測腳本
-                    page.add_init_script("""
-                        // 移除 webdriver 痕跡
-                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                        
-                        // 偽造 plugins
-                        Object.defineProperty(navigator, 'plugins', {
-                            get: () => [1, 2, 3, 4, 5]
-                        });
-                        
-                        // 偽造 languages
-                        Object.defineProperty(navigator, 'languages', {
-                            get: () => ['zh-TW', 'zh', 'en-US', 'en']
-                        });
-                        
-                        // 偽造 permissions
-                        const originalQuery = window.navigator.permissions.query;
-                        window.navigator.permissions.query = (parameters) => (
-                            parameters.name === 'notifications' ?
-                            Promise.resolve({ state: Notification.permission }) :
-                            originalQuery(parameters)
-                        );
-                        
-                        // 偽造 chrome 對象
-                        window.chrome = {
-                            runtime: {},
-                            loadTimes: function() {},
-                            csi: function() {},
-                            app: {}
-                        };
-                        
-                        // 移除 _phantom, callPhantom 等
-                        delete window._phantom;
-                        delete window.callPhantom;
-                        
-                        // 覆蓋 console.debug
-                        console.debug = () => {};
-                    """)
-                    
-                    # 設定 cookies (模擬正常用戶)
-                    page.context.add_cookies([
-                        {
-                            'name': 'devicePixelRatio',
-                            'value': '1',
-                            'domain': '.momoshop.com.tw',
-                            'path': '/'
-                        },
-                        {
-                            'name': 'city',
-                            'value': '6',
-                            'domain': '.momoshop.com.tw', 
-                            'path': '/'
-                        }
-                    ])
-                    
-                    # 隨機延遲
-                    import random
-                    time.sleep(random.uniform(1, 3))
-                    
-                    # 第二步：訪問首頁建立 session
-                    print("先訪問 momo 首頁...")
-                    page.goto("https://www.momoshop.com.tw/", timeout=30000, wait_until="networkidle")
-                    time.sleep(random.uniform(2, 4))
-                    
-                    # 第三步：再訪問目標頁面
-                    print("訪問商品頁面...")
-                    page.goto(url, timeout=60000, wait_until="networkidle")
-                    
-                    # 等待更長時間讓頁面完全載入
-                    time.sleep(random.uniform(3, 6))
-                    
-                    # 模擬人類行為：滾動頁面
-                    page.evaluate("window.scrollTo(0, 500)")
-                    time.sleep(1)
-                    page.evaluate("window.scrollTo(0, 0)")
-                    time.sleep(1)
-                    
-                    # 檢查頁面是否被阻擋
-                    page_content = page.content()
-                    if '系統偵測' in page_content or '安全驗證' in page_content or len(page_content) < 1000:
-                        print("頁面可能被反爬蟲系統阻擋")
-                        return None
-                    
-                    # 嘗試多種方式抓取價格
-                    
-                    # 方式1：直接找價格元素
-                    price_selectors = [
-                        # 基於截圖的精確選擇器
-                        'span[style*="color: rgb(255, 51, 51)"]',  # 紅色促銷價
-                        '.prdPrice .price',
-                        '.prdPrice span:last-child',
-                        
-                        # 常見的價格選擇器
-                        'span.price__main-value',
-                        '.price-value',
-                        '.o-price__content',
-                        '.prod-price',
-                        
-                        # 更通用的選擇器
-                        'span:has-text("元")',
-                        'div:has-text("元")',
-                        '[class*="price"]',
-                    ]
-                    
-                    for selector in price_selectors:
-                        try:
-                            elements = page.locator(selector).all()
-                            for element in elements:
-                                if element.is_visible():
-                                    text = element.text_content().strip()
-                                    if text and '元' in text:
-                                        # 提取數字
-                                        import re
-                                        numbers = re.findall(r'\d+', text)
-                                        if numbers:
-                                            price = max([int(n) for n in numbers])
-                                            if 10 <= price <= 99999:  # 合理價格範圍
-                                                print(f"方式1找到價格: {text} -> {price}")
-                                                return str(price)
-                        except Exception as e:
-                            continue
-                    
-                    # 方式2：JavaScript 執行抓取
-                    try:
-                        price_js = page.evaluate("""
-                            () => {
-                                // 找所有包含數字和'元'的文字
-                                const walker = document.createTreeWalker(
-                                    document.body,
-                                    NodeFilter.SHOW_TEXT,
-                                    null,
-                                    false
-                                );
-                                
-                                const prices = [];
-                                let node;
-                                
-                                while (node = walker.nextNode()) {
-                                    const text = node.textContent.trim();
-                                    if (text.includes('元') && /\\d/.test(text)) {
-                                        const numbers = text.match(/\\d+/g);
-                                        if (numbers) {
-                                            for (let num of numbers) {
-                                                const price = parseInt(num);
-                                                if (price >= 10 && price <= 99999) {
-                                                    prices.push(price);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // 返回最常出現的價格
-                                if (prices.length > 0) {
-                                    const counts = {};
-                                    prices.forEach(p => counts[p] = (counts[p] || 0) + 1);
-                                    
-                                    let maxCount = 0;
-                                    let mostCommon = prices[0];
-                                    
-                                    for (let price in counts) {
-                                        if (counts[price] > maxCount) {
-                                            maxCount = counts[price];
-                                            mostCommon = parseInt(price);
-                                        }
-                                    }
-                                    
-                                    return mostCommon;
-                                }
-                                
-                                return null;
-                            }
-                        """)
-                        
-                        if price_js:
-                            print(f"方式2找到價格: {price_js}")
-                            return str(price_js)
-                            
-                    except Exception as e:
-                        print(f"JavaScript 執行失敗: {e}")
-                    
-                    # 方式3：正規表達式在完整 HTML 中搜尋
-                    import re
-                    
-                    # 先解碼可能的亂碼
-                    try:
-                        # 如果是 UTF-8 編碼問題
-                        content_bytes = page_content.encode('latin1')
-                        decoded_content = content_bytes.decode('utf-8', errors='ignore')
-                    except:
-                        decoded_content = page_content
-                    
-                    price_patterns = [
-                        r'促銷價[^0-9]*?(\d+)[^0-9]*?元',
-                        r'售價[^0-9]*?(\d+)[^0-9]*?元',
-                        r'價格[^0-9]*?(\d+)[^0-9]*?元',
-                        r'NT\$[^0-9]*?(\d+)',
-                        r'>(\d+)<[^>]*元',
-                        r'(\d+)\s*元',
-                        r'"price"[^}]*?(\d+)',
-                        r'"salePrice"[^}]*?(\d+)',
-                    ]
-                    
-                    all_found_prices = []
-                    
-                    for pattern in price_patterns:
-                        matches = re.findall(pattern, decoded_content, re.IGNORECASE)
-                        for match in matches:
-                            try:
-                                price = int(match)
-                                if 10 <= price <= 99999:
-                                    all_found_prices.append(price)
-                            except:
-                                continue
-                    
-                    if all_found_prices:
-                        # 統計頻率，選擇最可能的價格
-                        from collections import Counter
-                        price_counts = Counter(all_found_prices)
-                        most_common = price_counts.most_common(1)[0]
-                        print(f"方式3找到價格: {all_found_prices} -> 選擇: {most_common[0]}")
-                        return str(most_common[0])
-                    
-                    print("所有方式都無法找到價格")
+                    page.wait_for_selector(".prdPrice b", timeout=10000)
+                except:
+                    print("行動版未載入價格區塊")
                     return None
-                    
-                except Exception as e:
-                    print(f"momo 抓取失敗: {str(e)}")
-                    return None
-                    
-                    # 專門為 momo 優化的 context 設定
-            def create_momo_context(browser):
-                """為 momo 創建專門的 context，加強反檢測"""
-                context = browser.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
-                    locale="zh-TW",
-                    timezone_id="Asia/Taipei",
-                    viewport={"width": 1920, "height": 1080},
-                    java_script_enabled=True,
-                    extra_http_headers={
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-                        "Accept-Encoding": "gzip, deflate, br",
-                        "Cache-Control": "no-cache",
-                        "Pragma": "no-cache",
-                        "DNT": "1",
-                        "Connection": "keep-alive",
-                        "Upgrade-Insecure-Requests": "1",
-                    }
-                )
-                
-                return context
+
+                price_text = page.locator(".prdPrice b").first.text_content().strip()
+                # 4. 清理數字
+                import re
+                price_num = re.sub(r'[^\d]', '', price_text)
+                return price_num or None
+
+
 
             # 修正後的 PChome 價格清理函數
             def clean_pchome_price(price_text):
