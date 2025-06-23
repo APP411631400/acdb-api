@@ -129,9 +129,9 @@ def get_product_detail():
                 elif platform == 'pchome':
                     # PChome 保持 JS，桌面 UA
                     return browser.new_context(
-                        user_agent=(Add commentMore actions
+                        user_agent=(
                             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "Add commentMore actions
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/124.0.0.0 Safari/537.36"
                         ),
                         locale="zh-TW",
