@@ -225,183 +225,113 @@ def get_product_detail():
                     print(f"momo 錯誤: {str(e)}")
                     return None
 
-            # 專門處理 PChome 的函數（改進版）
+            # 專門處理 PChome 的函數
             def scrape_pchome_price(page, url):
+                
+                # 新增：價格清理函數
+                def clean_pchome_price(price_text):
+                    """清理 PChome 價格文字，處理特價原價合併的問題"""
+                    import re
+                    
+                    # 移除所有非數字字符，只保留數字
+                    numbers_only = re.sub(r'[^0-9]', '', price_text)
+                    
+                    # 如果數字長度異常長（超過 6 位數），可能是特價原價合併
+                    if len(numbers_only) > 6:
+                        # 嘗試從原始文字中找出所有價格數字
+                        price_numbers = re.findall(r'([0-9,]+)', price_text)
+                        
+                        if len(price_numbers) >= 2:
+                            # 如果有多個價格，通常第一個是特價，取第一個
+                            first_price = price_numbers[0].replace(',', '')
+                            if first_price.isdigit() and len(first_price) <= 6:
+                                return first_price
+                        
+                        # 如果是連續數字且很長，嘗試拆分
+                        # 例如 268268 -> 268, 399399 -> 399
+                        if len(numbers_only) % 2 == 0:  # 偶數長度
+                            half = len(numbers_only) // 2
+                            first_half = numbers_only[:half]
+                            second_half = numbers_only[half:]
+                            
+                            # 如果兩半相同，取其中一個
+                            if first_half == second_half:
+                                return first_half
+                            
+                            # 如果不同，取較小的（通常是特價）
+                            if first_half.isdigit() and second_half.isdigit():
+                                return min(first_half, second_half, key=int)
+                    
+                    return numbers_only
+                
                 try:
                     print(f"正在抓取 PChome: {url}")
                     
                     page.goto(url, timeout=60000, wait_until="networkidle")
                     page.wait_for_timeout(2000)
                     
-                    # 根據實際 PChome 頁面結構的選擇器，按優先順序排列
+                    # PChome 的多種價格選擇器
                     selectors = [
-                        # PChome 24h 特價區域（紅色數字）
-                        "span.price:not([style*='text-decoration'])",  # 沒有刪除線的價格
-                        ".price:not(.original-price):not([style*='line-through'])",  # 排除原價
-                        
-                        # 常見的特價樣式
-                        "[style*='color: red'] .price",
-                        "[style*='color:#ff'] .price", 
-                        ".sale-price",
-                        ".special-price",
-                        ".discount-price",
-                        
-                        # 一般價格選擇器
+                        # 24h 購物的價格
                         "span.price",
-                        ".price-value", 
+                        ".price-value",
                         ".o-price__content",
+                        # 商店街的價格
                         ".prod-price",
                         ".price-txt",
+                        # 其他可能的標籤
+                        "[class*='price']",
                         ".money",
                         ".cost",
-                        
                         # 數據屬性
                         "[data-price]",
-                        "[data-value]",
-                        
-                        # 通用價格選擇器（最後嘗試）
-                        "[class*='price']:not([class*='original']):not([class*='old'])"
+                        "[data-value]"
                     ]
                     
-                    # 收集所有可能的價格，並區分特價和原價
-                    found_prices = []
-                    special_prices = []  # 特價
-                    regular_prices = []  # 一般價格
-                    
-                    # 收集所有可能的價格
                     for selector in selectors:
                         try:
                             elements = page.locator(selector).all()
                             for element in elements:
                                 if element.is_visible():
                                     price_text = element.text_content().strip()
-                                    
-                                    # 基本過濾
-                                    if not price_text or not any(char.isdigit() for char in price_text):
-                                        continue
-                                    if len(price_text) > 20 or '評價' in price_text or '商品' in price_text:
-                                        continue
-                                    
-                                    # 檢查是否為刪除線樣式（原價）
-                                    try:
-                                        style = element.get_attribute('style') or ''
-                                        parent_style = element.locator('..').get_attribute('style') or ''
-                                        
-                                        is_strikethrough = (
-                                            'text-decoration' in style and 'line-through' in style
-                                        ) or (
-                                            'text-decoration' in parent_style and 'line-through' in parent_style
-                                        )
-                                    except:
-                                        is_strikethrough = False
-                                    
-                                    # 提取數字
-                                    import re
-                                    numbers = re.findall(r'[0-9,]+', price_text)
-                                    for num_str in numbers:
-                                        try:
-                                            num = int(num_str.replace(',', ''))
-                                            # 合理的價格範圍過濾
-                                            if 10 <= num <= 999999:
-                                                found_prices.append(num)
-                                                
-                                                # 分類特價和原價
-                                                if is_strikethrough:
-                                                    regular_prices.append(num)
-                                                else:
-                                                    special_prices.append(num)
-                                        except:
+                                    if price_text and any(char.isdigit() for char in price_text):
+                                        # 排除一些不是價格的文字
+                                        if len(price_text) > 20 or '評價' in price_text or '商品' in price_text:
                                             continue
+                                        
+                                        # 修改：加入價格清理
+                                        cleaned_price = clean_pchome_price(price_text)
+                                        print(f"PChome 找到價格: {price_text} -> 清理後: {cleaned_price} (使用選擇器: {selector})")
+                                        return cleaned_price
                         except:
                             continue
                     
-                    # 智能選擇價格
-                    if found_prices:
-                        # 優先使用特價（非刪除線的價格）
-                        if special_prices:
-                            unique_special = sorted(list(set(special_prices)))
-                            if len(unique_special) == 1:
-                                print(f"PChome 找到特價: {unique_special[0]}")
-                                return str(unique_special[0])
-                            else:
-                                # 多個特價，取最低的
-                                min_special = min(unique_special)
-                                print(f"PChome 找到多個特價 {unique_special}，取最低: {min_special}")
-                                return str(min_special)
-                        
-                        # 去重並排序所有價格
-                        unique_prices = sorted(list(set(found_prices)))
-                        
-                        # 如果只有一個價格，直接回傳
-                        if len(unique_prices) == 1:
-                            print(f"PChome 找到單一價格: {unique_prices[0]}")
-                            return str(unique_prices[0])
-                        
-                        # 如果有多個價格，判斷邏輯：
-                        # 1. 檢查是否有明顯的特價/原價組合
-                        if len(unique_prices) == 2:
-                            lower, higher = unique_prices[0], unique_prices[1]
-                            
-                            # 如果較低價格是較高價格的 50%-95%，很可能是特價
-                            ratio = lower / higher
-                            if 0.5 <= ratio <= 0.95:
-                                print(f"PChome 發現特價組合 {lower}/{higher}，取特價: {lower}")
-                                return str(lower)
-                        
-                        # 2. 如果有很多相似的價格，可能是重複顯示，取最常出現的
-                        from collections import Counter
-                        counter = Counter(found_prices)
-                        most_common_price, count = counter.most_common(1)[0]
-                        
-                        if count >= 2:  # 如果同一價格出現2次以上
-                            print(f"PChome 找到重複價格: {most_common_price} (出現{count}次)")
-                            return str(most_common_price)
-                        
-                        # 3. 否則取最小值（通常是特價）
-                        min_price = min(unique_prices)
-                        print(f"PChome 找到多個價格 {unique_prices}，取最低價: {min_price}")
-                        return str(min_price)
-                    
-                    # 如果選擇器都沒找到，用正規表達式從頁面內容中尋找
+                    # 正規表達式備用方案
                     content = page.content()
                     import re
                     
                     price_patterns = [
-                        # 更精確的 PChome 價格模式
-                        r'特價[：:\s]*NT?\$?\s*([0-9,]+)',
-                        r'售價[：:\s]*NT?\$?\s*([0-9,]+)', 
                         r'price["\']:\s*["\']?([0-9,]+)',
+                        r'售價[：:\s]*\$?([0-9,]+)',
                         r'NT\$\s*([0-9,]+)',
-                        r'\$([0-9,]+)(?!\d)',  # 避免連續數字
+                        r'\$([0-9,]+)',
                         r'([0-9,]+)\s*元',
                     ]
                     
-                    regex_prices = []
                     for pattern in price_patterns:
                         matches = re.findall(pattern, content, re.IGNORECASE)
-                        for match in matches:
-                            try:
-                                num = int(match.replace(',', ''))
-                                if 10 <= num <= 999999:  # 合理價格範圍
-                                    regex_prices.append(num)
-                            except:
-                                continue
-                    
-                    if regex_prices:
-                        # 同樣的邏輯處理正規表達式找到的價格
-                        unique_regex_prices = sorted(list(set(regex_prices)))
-                        
-                        if len(unique_regex_prices) == 1:
-                            price = unique_regex_prices[0]
-                            print(f"PChome 用正規表達式找到價格: {price}")
-                            return str(price)
-                        else:
-                            # 取最小值或最常出現的
+                        if matches:
+                            # 取最常見的價格
                             from collections import Counter
-                            counter = Counter(regex_prices)
-                            most_common_price = counter.most_common(1)[0][0]
-                            print(f"PChome 用正規表達式找到價格: {most_common_price}")
-                            return str(most_common_price)
+                            counter = Counter(matches)
+                            most_common = counter.most_common(1)
+                            if most_common:
+                                price = most_common[0][0]
+                                
+                                # 修改：正規表達式找到的價格也要清理
+                                cleaned_price = clean_pchome_price(price)
+                                print(f"PChome 用正規表達式找到價格: {price} -> 清理後: {cleaned_price}")
+                                return cleaned_price
                     
                     return None
                     
