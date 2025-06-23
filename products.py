@@ -101,7 +101,7 @@ def get_product_detail():
             '康是美':   cosmed_url,
         }
 
-        # 2. 針對 Render 環境優化的 Playwright 設定
+        # 2. 輕量化 Playwright 設定
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
@@ -110,32 +110,38 @@ def get_product_detail():
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--disable-features=VizDisplayCompositor",
                     "--disable-extensions",
                     "--disable-plugins",
-                    "--disable-images",  # 不載入圖片，節省資源
-                    "--disable-javascript",  # 部分網站可能不需要JS
+                    "--disable-images",
                     "--memory-pressure-off",
-                    "--max_old_space_size=4096"
+                    "--max_old_space_size=256"  # 降低記憶體限制
                 ]
             )
             
-            # 使用更保守的設定
             context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0 Safari/537.36"
-                ),
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 locale="zh-TW",
-                viewport={"width": 1024, "height": 768},
-                java_script_enabled=False  # 先試試看不用JS
+                viewport={"width": 1024, "height": 768},  # 縮小 viewport
+                java_script_enabled=True
             )
 
-            # 簡化的反檢測
-            context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            """)
+            # 簡化反檢測
+            context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+
+            def get_price(text):
+                """輕量級價格提取"""
+                import re
+                if not text: return None
+                
+                patterns = [r'\$(\d{1,3}(?:,\d{3})*)', r'(\d{1,3}(?:,\d{3})*)\s*元']
+                for p in patterns:
+                    m = re.search(p, text)
+                    if m:
+                        try:
+                            n = int(m.group(1).replace(',', ''))
+                            if 10 <= n <= 999999: return m.group(1)
+                        except: pass
+                return None
 
             for platform, url in urls.items():
                 if not url or not url.startswith("http"):
@@ -144,96 +150,61 @@ def get_product_detail():
 
                 page = context.new_page()
                 try:
-                    print(f"正在抓取 {platform}: {url}")  # 加入 debug 資訊
-                    
-                    # 延長 timeout，Render 網路較慢
-                    page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                    
-                    # 等待頁面穩定
-                    time.sleep(2)
-                    
-                    # 先嘗試簡單的方法 - 直接抓取網頁內容
-                    content = page.content()
-                    print(f"{platform} 頁面長度: {len(content)}")  # debug
-                    
-                    # 各平台的 selector 邏輯（加入更多容錯）
-                    price_text = None
-                    
                     if platform == 'momo':
-                        selectors = [
-                            "span.price__main-value",
-                            ".prdPrice",
-                            ".price"
-                        ]
+                        # momo 需要 JS 和較長等待
+                        page.goto(url, timeout=35000, wait_until="networkidle")
+                        time.sleep(3)
+                        selectors = [".price__main-value", ".prdPrice", ".price-value", "[data-testid='price-value']"]
                         
                     elif platform == 'pchome':
-                        selectors = [
-                            "span.o-price__content",
-                            ".price",
-                            "#price"
-                        ]
+                        # PChome 相對簡單
+                        page.goto(url, timeout=25000, wait_until="domcontentloaded")
+                        time.sleep(2)
+                        selectors = [".price-value", ".prod-price", "#price"]
                         
-                    elif platform == '博客來':
-                        selectors = [
-                            "ul.price li strong",
-                            "span.price",
-                            ".price-tag"
-                        ]
-                        
-                    elif platform == '屈臣氏':
-                        selectors = [
-                            ".price-value",
-                            ".productPrice",
-                            ".price"
-                        ]
-                        
-                    else:  # 康是美
-                        selectors = [
-                            ".prod-sale-price",
-                            ".price",
-                            ".product-price"
-                        ]
+                    else:
+                        # 其他平台
+                        page.goto(url, timeout=25000, wait_until="domcontentloaded")
+                        time.sleep(1.5)
+                        if platform == '博客來':
+                            selectors = ["ul.price li strong", "span.price", ".price-tag"]
+                        elif platform == '屈臣氏':
+                            selectors = [".price-value", ".productPrice", ".price"]
+                        else:  # 康是美
+                            selectors = [".prod-sale-price", ".price", ".product-price"]
                     
-                    # 嘗試多個選擇器
+                    # 嘗試選擇器
+                    price_found = False
                     for selector in selectors:
                         try:
-                            element = page.locator(selector).first
-                            if element.is_visible():
-                                price_text = element.text_content()
-                                if price_text:
-                                    break
-                        except:
-                            continue
+                            els = page.locator(selector)
+                            if els.count() > 0:
+                                for i in range(min(3, els.count())):
+                                    if els.nth(i).is_visible():
+                                        text = els.nth(i).text_content()
+                                        price = get_price(text)
+                                        if price:
+                                            result[platform] = f"{price} 元"
+                                            price_found = True
+                                            break
+                            if price_found: break
+                        except: continue
                     
-                    # 如果還是沒抓到，嘗試用正規表達式從整個頁面找
-                    if not price_text:
-                        import re
-                        # 尋找台幣價格模式
-                        price_patterns = [
-                            r'NT\$\s*([0-9,]+)',
-                            r'\$\s*([0-9,]+)',
-                            r'價格[：:\s]*([0-9,]+)',
-                            r'售價[：:\s]*([0-9,]+)',
-                        ]
-                        
-                        for pattern in price_patterns:
-                            match = re.search(pattern, content)
-                            if match:
-                                price_text = match.group(1)
-                                break
-                    
-                    # 清理數字
-                    if price_text:
-                        num = re.sub(r'[^0-9.]', '', price_text.strip())
-                        result[platform] = f"{num} 元" if num else "查無價格"
-                    else:
-                        result[platform] = "查無價格"
+                    # 備用：從頁面內容找
+                    if not price_found:
+                        content = page.content()
+                        price = get_price(content)
+                        result[platform] = f"{price} 元" if price else "查無價格"
 
                 except Exception as e:
-                    print(f"{platform} 錯誤: {str(e)}")  # debug
-                    result[platform] = f"錯誤: {str(e)[:50]}"
+                    if "timeout" in str(e).lower():
+                        result[platform] = "超時"
+                    else:
+                        result[platform] = "錯誤"
                 finally:
-                    page.close()
+                    try:
+                        page.close()
+                    except: pass
 
             context.close()
             browser.close()
@@ -241,5 +212,4 @@ def get_product_detail():
         return jsonify(result)
 
     except Exception as e:
-        print(f"整體錯誤: {str(e)}")  # debug
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'系統錯誤'}), 500
