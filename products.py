@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 import pyodbc
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, devices
 import re
 import time
 import random
@@ -156,19 +156,14 @@ def get_product_detail():
                     )
 
             def scrape_momo_price(page, desktop_url):
-                # 1. 解析 i_code
+                # 解析 i_code
                 parsed = urlparse(desktop_url)
-                params = parse_qs(parsed.query)
-                code = params.get('i_code', [None])[0]
+                code   = parse_qs(parsed.query).get('i_code', [None])[0]
                 if not code:
                     print("無法解析 i_code")
                     return None
 
-                # 2. 組出行動版靜態頁 URL
                 mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
-                print(f"行動版 URL：{mobile_url}")
-
-                # 3. 載入並抓價
                 page.goto(mobile_url, timeout=60000, wait_until="domcontentloaded")
                 try:
                     page.wait_for_selector(".prdPrice b", timeout=10000)
@@ -177,10 +172,16 @@ def get_product_detail():
                     return None
 
                 price_text = page.locator(".prdPrice b").first.text_content().strip()
-                # 4. 清理數字
-                import re
-                price_num = re.sub(r'[^\d]', '', price_text)
+                price_num  = re.sub(r'[^\d]', '', price_text)
                 return price_num or None
+
+            # 建立 Playwright Context 時，套用行動裝置
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(headless=True)
+                # 直接使用內建 iPhone 13 設定
+                context = browser.new_context(**devices['iPhone 13'])
+                page    = context.new_page()
+                price   = scrape_momo_price(page, desktop_url)
 
 
 
