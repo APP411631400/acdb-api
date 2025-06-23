@@ -225,54 +225,96 @@ def get_product_detail():
                     print(f"momo 錯誤: {str(e)}")
                     return None
 
-            # 專門處理 PChome 的函數
-            def scrape_pchome_price(page, url):
+            # 修正後的 PChome 價格清理函數
+            def clean_pchome_price(price_text):
+                """處理 PChome 特價和劃線原價被一起抓取的問題"""
+                import re
                 
-                # 新增：價格清理函數
-                def clean_pchome_price(price_text):
-                    """處理 PChome 特價和劃線原價被一起抓取的問題"""
-                    import re
-                    
-                    # 移除非數字字符
-                    numbers_only = re.sub(r'[^0-9]', '', price_text)
-                    
-                    # 檢查是否為重複數字（如 268268）
-                    if len(numbers_only) >= 6 and len(numbers_only) % 2 == 0:
-                        half = len(numbers_only) // 2
-                        first_half = numbers_only[:half]
-                        second_half = numbers_only[half:]
-                        
-                        # 如果兩半完全相同，就是重複價格，取一個
-                        if first_half == second_half and first_half.isdigit():
-                            return first_half
-                    
-                    # 如果長度是奇數或不是重複，可能是兩個不同價格連在一起
-                    # 例如 179195 (179特價 + 195原價)
-                    if len(numbers_only) >= 5:
-                        # 嘗試各種分割方式，找出最合理的特價
-                        best_price = None
-                        
-                        for split_pos in range(2, len(numbers_only)-1):
-                            left_part = numbers_only[:split_pos]
-                            right_part = numbers_only[split_pos:]
-                            
-                            if (left_part.isdigit() and right_part.isdigit() and
-                                10 <= int(left_part) <= 9999 and 10 <= int(right_part) <= 9999):
-                                
-                                # 取較小的作為特價
-                                if int(left_part) < int(right_part):
-                                    if not best_price or int(left_part) < int(best_price):
-                                        best_price = left_part
-                                elif int(right_part) < int(left_part):
-                                    if not best_price or int(right_part) < int(best_price):
-                                        best_price = right_part
-                        
-                        if best_price:
-                            return best_price
-                    
-                    # 其他情況直接返回
+                # 移除非數字字符
+                numbers_only = re.sub(r'[^0-9]', '', price_text)
+                
+                # 如果數字太短，直接返回
+                if len(numbers_only) < 3:
                     return numbers_only
                 
+                # 檢查是否為重複數字（如 268268）
+                if len(numbers_only) >= 6 and len(numbers_only) % 2 == 0:
+                    half = len(numbers_only) // 2
+                    first_half = numbers_only[:half]
+                    second_half = numbers_only[half:]
+                    
+                    # 如果兩半完全相同，就是重複價格，取一個
+                    if first_half == second_half and first_half.isdigit():
+                        return first_half
+                
+                # 如果長度是6位數且可能是兩個3位數價格（如 179195）
+                if len(numbers_only) == 6:
+                    # 嘗試分割成兩個3位數
+                    left_3 = numbers_only[:3]
+                    right_3 = numbers_only[3:]
+                    
+                    # 檢查是否都是合理的價格範圍（100-999）
+                    if (left_3.isdigit() and right_3.isdigit() and
+                        100 <= int(left_3) <= 999 and 100 <= int(right_3) <= 999):
+                        # 取較小的作為特價
+                        return left_3 if int(left_3) < int(right_3) else right_3
+                
+                # 如果長度是5位數，可能是兩個不等長的價格
+                elif len(numbers_only) == 5:
+                    # 嘗試分割方式：2+3 或 3+2
+                    splits = [
+                        (numbers_only[:2], numbers_only[2:]),  # 2+3: 17|195 (X)
+                        (numbers_only[:3], numbers_only[3:])   # 3+2: 179|95 (X)
+                    ]
+                    
+                    for left_part, right_part in splits:
+                        if (left_part.isdigit() and right_part.isdigit()):
+                            left_val = int(left_part)
+                            right_val = int(right_part)
+                            
+                            # 更嚴格的判斷：避免不合理的分割
+                            # 2位數價格必須 >= 50，3位數價格必須 >= 100
+                            if len(left_part) == 2 and left_val < 50:
+                                continue
+                            if len(left_part) == 3 and left_val < 100:
+                                continue
+                            if len(right_part) == 2 and right_val < 50:
+                                continue
+                            if len(right_part) == 3 and right_val < 100:
+                                continue
+                            
+                            # 取較小的作為特價
+                            return left_part if left_val < right_val else right_part
+                
+                # 如果是4位數，檢查是否是兩個2位數（不太可能，但以防萬一）
+                elif len(numbers_only) == 4:
+                    left_2 = numbers_only[:2]
+                    right_2 = numbers_only[2:]
+                    
+                    if (left_2.isdigit() and right_2.isdigit() and
+                        int(left_2) >= 50 and int(right_2) >= 50):
+                        return left_2 if int(left_2) < int(right_2) else right_2
+                
+                # 其他情況：如果是正常的價格長度（3-4位），直接返回
+                if 3 <= len(numbers_only) <= 4:
+                    return numbers_only
+                
+                # 如果是很長的數字，可能包含多個價格，嘗試找最短的合理價格
+                if len(numbers_only) > 6:
+                    # 從左到右找3-4位數的合理價格
+                    for start in range(len(numbers_only) - 2):
+                        for length in [3, 4]:
+                            if start + length <= len(numbers_only):
+                                candidate = numbers_only[start:start + length]
+                                if candidate.isdigit() and 100 <= int(candidate) <= 9999:
+                                    return candidate
+                
+                # 最後手段：直接返回原數字
+                return numbers_only
+
+
+            # 完整的 PChome 抓取函數
+            def scrape_pchome_price(page, url):
                 try:
                     print(f"正在抓取 PChome: {url}")
                     
@@ -308,7 +350,7 @@ def get_product_detail():
                                         if len(price_text) > 20 or '評價' in price_text or '商品' in price_text:
                                             continue
                                         
-                                        # 修改：加入價格清理
+                                        # 使用修正後的價格清理函數
                                         cleaned_price = clean_pchome_price(price_text)
                                         print(f"PChome 找到價格: {price_text} -> 清理後: {cleaned_price} (使用選擇器: {selector})")
                                         return cleaned_price
@@ -337,7 +379,7 @@ def get_product_detail():
                             if most_common:
                                 price = most_common[0][0]
                                 
-                                # 修改：正規表達式找到的價格也要清理
+                                # 使用修正後的價格清理函數
                                 cleaned_price = clean_pchome_price(price)
                                 print(f"PChome 用正規表達式找到價格: {price} -> 清理後: {cleaned_price}")
                                 return cleaned_price
