@@ -17,7 +17,7 @@ conn_str = (
 )
 
 
-# ✅ 取得所有比價商品資料（前端顯示）
+# ✅ 取得比價商品資料（前端顯示）
 @products.route('/products', methods=['GET'])
 def get_all_products():
     try:
