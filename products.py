@@ -68,6 +68,178 @@ def search_products():
         return jsonify({'error': str(e)}), 500
 
 
+def extract_momo_product_id(url):
+    """從 momo URL 提取商品 ID"""
+    try:
+        # momo URL 格式: https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=商品ID
+        parsed = urlparse(url)
+        if 'momoshop.com.tw' in parsed.netloc:
+            params = parse_qs(parsed.query)
+            if 'i_code' in params:
+                return params['i_code'][0]
+    except:
+        pass
+    return None
+
+def extract_pchome_product_id(url):
+    """從 PChome URL 提取商品 ID"""
+    try:
+        # PChome URL 格式: https://24h.pchome.com.tw/prod/商品ID
+        parsed = urlparse(url)
+        if 'pchome.com.tw' in parsed.netloc:
+            path_parts = parsed.path.split('/')
+            for part in path_parts:
+                if part and len(part) > 5:  # 商品ID通常較長
+                    return part
+    except:
+        pass
+    return None
+
+def get_momo_price_by_api(product_url):
+    """使用 momo API 獲取價格"""
+    try:
+        product_id = extract_momo_product_id(product_url)
+        if not product_id:
+            return "無法解析商品ID"
+        
+        # momo API endpoint (可能需要調整)
+        api_urls = [
+            f"https://www.momoshop.com.tw/ajax/GetProductDetail.ashx?i_code={product_id}",
+            f"https://www.momoshop.com.tw/ajax/product/GetProductDetail.ashx?i_code={product_id}",
+        ]
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Referer': 'https://www.momoshop.com.tw/',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+        
+        for api_url in api_urls:
+            try:
+                response = requests.get(api_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # 嘗試不同的價格欄位
+                    price_fields = ['SalePrice', 'Price', 'sellPrice', 'price', 'finalPrice']
+                    for field in price_fields:
+                        if field in data and data[field]:
+                            return f"{data[field]} 元"
+                    
+                    # 如果JSON結構複雜，遞迴搜尋價格
+                    def find_price_in_dict(obj, depth=0):
+                        if depth > 3:  # 避免無限遞迴
+                            return None
+                        if isinstance(obj, dict):
+                            for key, value in obj.items():
+                                if any(keyword in key.lower() for keyword in ['price', '價格', 'amount']):
+                                    if isinstance(value, (int, float)) and value > 0:
+                                        return value
+                                elif isinstance(value, (dict, list)):
+                                    result = find_price_in_dict(value, depth + 1)
+                                    if result:
+                                        return result
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                result = find_price_in_dict(item, depth + 1)
+                                if result:
+                                    return result
+                        return None
+                    
+                    price = find_price_in_dict(data)
+                    if price:
+                        return f"{price} 元"
+                        
+            except Exception as e:
+                print(f"momo API {api_url} 錯誤: {e}")
+                continue
+        
+        return "API無法獲取價格"
+        
+    except Exception as e:
+        return f"momo API錯誤: {str(e)[:50]}"
+
+def get_pchome_price_by_api(product_url):
+    """使用 PChome API 獲取價格"""
+    try:
+        product_id = extract_pchome_product_id(product_url)
+        if not product_id:
+            return "無法解析商品ID"
+        
+        # PChome API endpoints
+        api_urls = [
+            f"https://ecapi.pchome.com.tw/ecservice/product/v1/product/{product_id}",
+            f"https://ecapi-cdn.pchome.com.tw/cdn/ecservice/product/v1/product/{product_id}",
+            f"https://24h.pchome.com.tw/api/prod/{product_id}",
+        ]
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Referer': 'https://24h.pchome.com.tw/',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8'
+        }
+        
+        for api_url in api_urls:
+            try:
+                response = requests.get(api_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # PChome 常見的價格欄位
+                    price_paths = [
+                        ['Price'],
+                        ['SalePrice'], 
+                        ['price'],
+                        ['data', 'price'],
+                        ['data', 'Price'],
+                        ['product', 'price'],
+                        ['result', 'price'],
+                    ]
+                    
+                    for path in price_paths:
+                        try:
+                            value = data
+                            for key in path:
+                                value = value[key]
+                            if isinstance(value, (int, float)) and value > 0:
+                                return f"{value} 元"
+                        except (KeyError, TypeError):
+                            continue
+                    
+                    # 深度搜尋價格
+                    def find_price_recursive(obj, depth=0):
+                        if depth > 4:
+                            return None
+                        if isinstance(obj, dict):
+                            for key, value in obj.items():
+                                if 'price' in key.lower() and isinstance(value, (int, float)) and value > 0:
+                                    return value
+                                elif isinstance(value, (dict, list)):
+                                    result = find_price_recursive(value, depth + 1)
+                                    if result:
+                                        return result
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                result = find_price_recursive(item, depth + 1)
+                                if result:
+                                    return result
+                        return None
+                    
+                    price = find_price_recursive(data)
+                    if price:
+                        return f"{price} 元"
+                        
+            except Exception as e:
+                print(f"PChome API {api_url} 錯誤: {e}")
+                continue
+        
+        return "API無法獲取價格"
+        
+    except Exception as e:
+        return f"PChome API錯誤: {str(e)[:50]}"
+
 @products.route('/product_detail', methods=['GET'])
 def get_product_detail():
     product_id = request.args.get("id", "")
@@ -93,17 +265,35 @@ def get_product_detail():
 
         name, momo_url, pchome_url, books_url, watsons_url, cosmed_url = row
         result = {"商品ID": product_id, "商品名稱": name}
-        urls = {
-            'momo':    momo_url,
-            'pchome':  pchome_url,
-            '博客來':   books_url,
-            '屈臣氏':   watsons_url,
-            '康是美':   cosmed_url,
-        }
+        
+        # 2. 處理 momo 和 PChome - 優先使用 API
+        print("開始處理 momo 和 PChome...")
+        
+        # momo
+        if momo_url and momo_url.startswith("http"):
+            print(f"正在用API抓取 momo: {momo_url}")
+            momo_price = get_momo_price_by_api(momo_url)
+            result['momo'] = momo_price
+        else:
+            result['momo'] = "無"
+        
+        # PChome    
+        if pchome_url and pchome_url.startswith("http"):
+            print(f"正在用API抓取 PChome: {pchome_url}")
+            pchome_price = get_pchome_price_by_api(pchome_url)
+            result['pchome'] = pchome_price
+        else:
+            result['pchome'] = "無"
 
-        # 2. 針對 Render 環境優化的 Playwright 設定
+        # 3. 其他平台用 Playwright（博客來、屈臣氏、康是美）
+        other_urls = {
+            '博客來': books_url,
+            '屈臣氏': watsons_url,
+            '康是美': cosmed_url,
+        }
+        
+        print("開始處理其他平台...")
         with sync_playwright() as p:
-            # 更輕量的瀏覽器設定
             browser = p.chromium.launch(
                 headless=True,
                 args=[
@@ -116,219 +306,98 @@ def get_product_detail():
                     "--disable-plugins",
                     "--disable-images",
                     "--memory-pressure-off",
-                    "--max_old_space_size=256",  # 降低記憶體限制
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-renderer-backgrounding",
+                    "--max_old_space_size=4096"
                 ]
             )
+            
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0 Safari/537.36"
+                ),
+                locale="zh-TW",
+                viewport={"width": 1024, "height": 768},
+                java_script_enabled=True  # 這些網站可能需要JS
+            )
 
-            for platform, url in urls.items():
+            context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            """)
+
+            for platform, url in other_urls.items():
                 if not url or not url.startswith("http"):
                     result[platform] = "無"
                     continue
-
-                # 根據平台決定是否需要 JavaScript
-                need_js = platform in ['momo']
-                
-                context = browser.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (X11; Linux x86_64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0 Safari/537.36"
-                    ),
-                    locale="zh-TW",
-                    viewport={"width": 1024, "height": 768},
-                    java_script_enabled=need_js
-                )
-
-                # 反檢測
-                if need_js:
-                    context.add_init_script("""
-                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                    """)
 
                 page = context.new_page()
                 try:
                     print(f"正在抓取 {platform}: {url}")
                     
-                    # 根據平台調整 timeout 和等待策略
-                    if platform == 'momo':
-                        page.goto(url, timeout=45000, wait_until="networkidle")
-                        time.sleep(3)  # 等待 JavaScript 渲染
-                    else:
-                        page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                        time.sleep(1)
+                    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                    time.sleep(3)  # 等待JS渲染
+                    
+                    content = page.content()
+                    print(f"{platform} 頁面長度: {len(content)}")
                     
                     price_text = None
                     
-                    # 各平台特化的抓取邏輯
-                    if platform == 'momo':
-                        # momo 的價格在 JavaScript 渲染後的多個可能位置
-                        selectors = [
-                            "span.price__main-value",
-                            ".prdPrice .o-price__price-value",
-                            ".prdPrice .price",
-                            "[data-price]",
-                            ".price-value",
-                            ".price-num"
-                        ]
-                        
-                        # 先嘗試從 JavaScript 變數中抓取
-                        try:
-                            js_price = page.evaluate("""
-                                () => {
-                                    // 嘗試從全域變數取得
-                                    if (window.goodsPrice) return window.goodsPrice;
-                                    if (window.price) return window.price;
-                                    
-                                    // 從 JSON-LD 取得
-                                    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-                                    for (let script of scripts) {
-                                        try {
-                                            const data = JSON.parse(script.textContent);
-                                            if (data.offers && data.offers.price) {
-                                                return data.offers.price;
-                                            }
-                                        } catch(e) {}
-                                    }
-                                    
-                                    return null;
-                                }
-                            """)
-                            if js_price:
-                                price_text = str(js_price)
-                        except:
-                            pass
-                        
-                        # 如果 JS 方法失敗，用 selector
-                        if not price_text:
-                            for selector in selectors:
-                                try:
-                                    element = page.locator(selector).first
-                                    if element.is_visible(timeout=5000):
-                                        price_text = element.text_content()
-                                        if price_text and any(char.isdigit() for char in price_text):
-                                            break
-                                except:
-                                    continue
-
-                    elif platform == 'pchome':
-                        # PChome 的價格結構較穩定
-                        selectors = [
-                            ".o-price-data__price",
-                            ".o-price__content span",
-                            ".price-value",
-                            "#price span"
-                        ]
-                        
-                        # 特別針對 PChome 的價格格式
-                        try:
-                            # 尋找包含 $ 符號的價格
-                            price_elements = page.locator("text=/\\$\\d+/").all()
-                            for element in price_elements:
-                                text = element.text_content()
-                                if text and '$' in text and len(text) < 20:  # 避免抓到太長的文字
-                                    price_text = text
-                                    break
-                        except:
-                            pass
-                        
-                        # 備用選擇器
-                        if not price_text:
-                            for selector in selectors:
-                                try:
-                                    element = page.locator(selector).first
-                                    if element.is_visible():
-                                        price_text = element.text_content()
-                                        if price_text:
-                                            break
-                                except:
-                                    continue
-
-                    elif platform == '博客來':
+                    if platform == '博客來':
                         selectors = [
                             "ul.price li strong",
                             "span.price",
-                            ".price-tag"
+                            ".price-tag",
+                            ".price"
                         ]
                         
                     elif platform == '屈臣氏':
                         selectors = [
                             ".price-value",
-                            ".productPrice",
-                            ".price"
+                            ".productPrice", 
+                            ".price",
+                            "[data-testid='price']"
                         ]
                         
                     else:  # 康是美
                         selectors = [
                             ".prod-sale-price",
                             ".price",
-                            ".product-price"
+                            ".product-price",
+                            ".sale-price"
                         ]
                     
-                    # 針對其他平台的通用選擇器邏輯
-                    if platform not in ['momo', 'pchome'] and not price_text:
-                        for selector in selectors:
-                            try:
-                                element = page.locator(selector).first
-                                if element.is_visible():
-                                    price_text = element.text_content()
-                                    if price_text:
-                                        break
-                            except:
-                                continue
-                    
-                    # 如果還是沒抓到，用正規表達式從頁面內容搜尋
-                    if not price_text:
-                        import re
-                        content = page.content()
-                        
-                        # 針對不同平台的價格模式
-                        if platform == 'momo':
-                            patterns = [
-                                r'"price":\s*"?(\d+)"?',
-                                r'價格[：:\s]*\$?([0-9,]+)',
-                                r'NT\$\s*([0-9,]+)',
-                            ]
-                        elif platform == 'pchome':
-                            patterns = [
-                                r'\$(\d+)',
-                                r'驚喜優惠[^0-9]*\$(\d+)',
-                                r'特價[^0-9]*\$?([0-9,]+)',
-                            ]
-                        else:
-                            patterns = [
-                                r'NT\$\s*([0-9,]+)',
-                                r'\$\s*([0-9,]+)',
-                                r'價格[：:\s]*([0-9,]+)',
-                                r'售價[：:\s]*([0-9,]+)',
-                            ]
-                        
-                        for pattern in patterns:
-                            matches = re.findall(pattern, content)
-                            if matches:
-                                # 取最常見的價格（避免抓到廣告價格）
-                                price_candidates = [m for m in matches if m.replace(',', '').isdigit()]
-                                if price_candidates:
-                                    price_text = max(set(price_candidates), key=price_candidates.count)
+                    # 嘗試多個選擇器
+                    for selector in selectors:
+                        try:
+                            element = page.locator(selector).first
+                            if element.is_visible():
+                                price_text = element.text_content()
+                                if price_text and price_text.strip():
                                     break
+                        except:
+                            continue
                     
-                    # 清理和格式化價格
+                    # 正規表達式搜尋
+                    if not price_text:
+                        price_patterns = [
+                            r'NT\$\s*([0-9,]+)',
+                            r'\$\s*([0-9,]+)', 
+                            r'價格[：:\s]*([0-9,]+)',
+                            r'售價[：:\s]*([0-9,]+)',
+                            r'定價[：:\s]*([0-9,]+)',
+                        ]
+                        
+                        for pattern in price_patterns:
+                            match = re.search(pattern, content)
+                            if match:
+                                price_text = match.group(1)
+                                break
+                    
+                    # 清理並格式化價格
                     if price_text:
-                        # 移除非數字字符但保留逗號和小數點
-                        clean_price = re.sub(r'[^\d,.]', '', price_text.strip())
-                        if clean_price and clean_price.replace(',', '').replace('.', '').isdigit():
-                            # 格式化數字
-                            try:
-                                num = float(clean_price.replace(',', ''))
-                                if num > 0 and num < 1000000:  # 合理的價格範圍
-                                    result[platform] = f"{int(num):,} 元"
-                                else:
-                                    result[platform] = "價格異常"
-                            except:
-                                result[platform] = "價格格式錯誤"
+                        num = re.sub(r'[^0-9.]', '', price_text.strip())
+                        if num and float(num) > 0:
+                            result[platform] = f"{num} 元"
                         else:
                             result[platform] = "查無價格"
                     else:
@@ -336,13 +405,14 @@ def get_product_detail():
 
                 except Exception as e:
                     print(f"{platform} 錯誤: {str(e)}")
-                    result[platform] = "抓取失敗"
+                    result[platform] = f"錯誤: {str(e)[:50]}"
                 finally:
                     page.close()
-                    context.close()
 
+            context.close()
             browser.close()
 
+        print("所有平台處理完成")
         return jsonify(result)
 
     except Exception as e:
