@@ -123,21 +123,21 @@ def get_product_detail():
             
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
-                if platform in ['momo', 'pchome']:
-                    # momo 和 PChome 需要 JavaScript
+                if platform == 'momo':
+                # momo 用行動裝置
+                    return browser.new_context(**p.devices['iPhone 13'])
+                elif platform == 'pchome':
+                    # PChome 保持 JS，桌面 UA
                     return browser.new_context(
-                        user_agent=(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0.0.0 Safari/537.36"
-                        ),
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/124.0.0.0 Safari/537.36",
                         locale="zh-TW",
                         viewport={"width": 1920, "height": 1080},
                         java_script_enabled=True,
                         extra_http_headers={
                             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-                            "Accept-Encoding": "gzip, deflate, br",
                             "Cache-Control": "no-cache",
                             "Pragma": "no-cache",
                         }
