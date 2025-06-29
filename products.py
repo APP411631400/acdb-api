@@ -183,26 +183,49 @@ def get_product_detail():
 
 
             def scrape_momo_price(page, desktop_url):
-                # 解析 i_code
+                # 解析 i_code，轉到行動版靜態頁
                 parsed = urlparse(desktop_url)
                 code = parse_qs(parsed.query).get('i_code', [None])[0]
                 if not code:
                     return None
-
-                # 轉成行動版靜態 URL
                 mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
                 page.goto(mobile_url, timeout=60000, wait_until="networkidle")
 
-                # 明確等待價格元素出現
-                try:
-                    page.wait_for_selector(".prdPrice b", timeout=15000)
-                except:
+                # 多種價格 selector 備援
+                selectors = [
+                    ".prdPrice b",      # 舊版備援
+                    "span.price",       # 常見 class
+                    ".special-price",   # 假設 mobile 促銷價 class
+                    "[id*=price]",      # id 裡有 price 的元素
+                ]
+                price_text = None
+
+                for sel in selectors:
+                    try:
+                        # 等待這個 selector 出現
+                        page.wait_for_selector(sel, timeout=5000)
+                        elem = page.locator(sel).first
+                        txt = elem.text_content().strip()
+                        # 找到像 $359 這樣至少一位數就視為價格
+                        if re.search(r"\d+", txt):
+                            price_text = txt
+                            break
+                    except:
+                        continue
+
+                # 如果上述都拿不到，再從原始 HTML 用正則 fallback
+                if not price_text:
+                    content = page.content()
+                    m = re.search(r'[\$NT\￥]\s*([0-9,]+)', content)
+                    price_text = m.group(0) if m else None
+
+                if not price_text:
                     return None
 
-                # 擷取並清理價格
-                price_text = page.locator(".prdPrice b").first.text_content().strip()
-                price_num = re.sub(r'[^\d]', '', price_text)
+                # 清理非數字
+                price_num = re.sub(r"[^\d]", "", price_text)
                 return price_num or None
+
 
 
             # 修正後的 PChome 價格清理函數
