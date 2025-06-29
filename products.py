@@ -124,11 +124,9 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
-                    # momo 用行動裝置，並補全 is_mobile/has_touch、行動特有 headers、偽造指紋
+                    device = p.devices['iPhone 13']
                     context = browser.new_context(
-                        **p.devices['iPhone 13'],
-                        is_mobile=True,
-                        has_touch=True,
+                        **device,
                         locale="zh-TW",
                         timezone_id="Asia/Taipei",
                         extra_http_headers={
@@ -144,7 +142,6 @@ def get_product_detail():
                             "sec-ch-ua-platform": '"Android"',
                         }
                     )
-                    # 注入更完整的行動瀏覽器偽造腳本
                     context.add_init_script("""
                         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                         Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
