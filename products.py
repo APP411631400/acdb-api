@@ -250,7 +250,7 @@ def get_product_detail():
                             print(f"第二次載入也失敗: {e2}")
                             return None
 
-                    # 多種價格選擇器，按優先順序嘗試
+                    # 多價格選擇器，按優先順序嘗試
                     price_selectors = [
                         # 行動版主要價格選擇器
                         ".prdPrice b",
