@@ -231,6 +231,7 @@ def get_product_detail():
             # 修正後的 PChome 價格清理函數
             def clean_pchome_price(price_text):
                 """處理 PChome 特價和劃線原價被一起抓取的問題"""
+                import re
                 
                 # 移除非數字字符
                 numbers_only = re.sub(r'[^0-9]', '', price_text)
@@ -361,7 +362,7 @@ def get_product_detail():
                     
                     # 正規表達式備用方案
                     content = page.content()
-                    
+                    import re
                     price_patterns = [
                         r'price["\']:\s*["\']?([0-9,]+)',
                         r'售價[：:\s]*\$?([0-9,]+)',
