@@ -124,23 +124,70 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
-                    # 1. 直接使用官方定義的 iPhone 13 行動裝置參數（已含 is_mobile, has_touch）  
-                    device = p.devices['iPhone 13']
-                    # 2. 加上必要 locale、時區、Referer 及行動 HTTP headers
-                    context = browser.new_context(
-                        **device,
-                        locale="zh-TW",
-                        timezone_id="Asia/Taipei",
-                        extra_http_headers={
-                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-                            "Referer": "https://www.momoshop.com.tw/",
-                            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not A Brand";v="99"',
-                            "sec-ch-ua-mobile": "?1",
-                            "sec-ch-ua-platform": '"Android"',
-                        }
-                    ) 
-                    return context
+                    return create_momo_context(browser, p)  # 使用下方的優化函數
+                    # 優化後的 momo context 創建函數  
+            def create_momo_context(browser, p):
+                """為 momo 創建最佳化的瀏覽器 context"""
+                
+                # 使用 iPhone 13 Pro 設定（更新的設備）
+                device = p.devices['iPhone 13 Pro']
+                
+                context = browser.new_context(
+                    **device,
+                    locale="zh-TW",
+                    timezone_id="Asia/Taipei",
+                    # 更真實的 HTTP headers
+                    extra_http_headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Accept-Encoding": "gzip, deflate, br", 
+                        "Cache-Control": "no-cache",
+                        "Pragma": "no-cache",
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate", 
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-User": "?1",
+                        "Upgrade-Insecure-Requests": "1",
+                        "sec-ch-ua": '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
+                        "sec-ch-ua-mobile": "?1",
+                        "sec-ch-ua-platform": '"iOS"',
+                    }
+                )
+                
+                # 加強反檢測
+                context.add_init_script("""
+                    // 隱藏 webdriver 特徵
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                    
+                    // 模擬真實的 plugins
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+                    
+                    // 模擬真實的語言設定
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['zh-TW', 'zh', 'en-US', 'en'],
+                    });
+                    
+                    // 隱藏 Chrome 自動化特徵
+                    if (navigator.permissions && navigator.permissions.query) {
+                        const originalQuery = navigator.permissions.query;
+                        navigator.permissions.query = (parameters) => (
+                            parameters.name === 'notifications' ?
+                                Promise.resolve({ state: Cypress ? 'denied' : 'granted' }) :
+                                originalQuery(parameters)
+                        );
+                    }
+                    
+                    // 模擬真實的 screen 屬性
+                    Object.defineProperty(screen, 'colorDepth', {
+                        get: () => 24,
+                    });
+                """)
+                
+                return context
                     
                 elif platform == 'pchome':
                     # PChome 保持 JS，桌面 UA
@@ -174,27 +221,131 @@ def get_product_detail():
                         java_script_enabled=False
                     )
 
+
             def scrape_momo_price(page, desktop_url):
-                # 解析 i_code
-                parsed = urlparse(desktop_url)
-                code = parse_qs(parsed.query).get('i_code', [None])[0]
-                if not code:
-                    return None
-
-                # 轉成行動版靜態 URL
-                mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
-                page.goto(mobile_url, timeout=60000, wait_until="networkidle")
-
-                # 明確等待價格元素出現
+                """優化後的 momo 價格爬蟲函數"""
                 try:
-                    page.wait_for_selector(".prdPrice b", timeout=15000)
-                except:
-                    return None
+                    # 解析 i_code
+                    parsed = urlparse(desktop_url)
+                    code = parse_qs(parsed.query).get('i_code', [None])[0]
+                    if not code:
+                        print("無法從 URL 解析 i_code")
+                        return None
 
-                # 擷取並清理價格
-                price_text = page.locator(".prdPrice b").first.text_content().strip()
-                price_num = re.sub(r'[^\d]', '', price_text)
-                return price_num or None
+                    # 轉成行動版靜態 URL  
+                    mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
+                    print(f"嘗試訪問 momo 行動版: {mobile_url}")
+                    
+                    # 第一次嘗試：標準載入
+                    try:
+                        page.goto(mobile_url, timeout=30000, wait_until="networkidle")
+                        page.wait_for_timeout(3000)  # 等待 3 秒讓頁面完全載入
+                    except Exception as e:
+                        print(f"第一次載入失敗，嘗試重新載入: {e}")
+                        # 第二次嘗試：使用 domcontentloaded
+                        try:
+                            page.goto(mobile_url, timeout=20000, wait_until="domcontentloaded")
+                            page.wait_for_timeout(5000)
+                        except Exception as e2:
+                            print(f"第二次載入也失敗: {e2}")
+                            return None
+
+                    # 多種價格選擇器，按優先順序嘗試
+                    price_selectors = [
+                        # 行動版主要價格選擇器
+                        ".prdPrice b",
+                        ".prdPrice strong", 
+                        ".prdPrice",
+                        ".price b",
+                        ".price strong",
+                        ".price",
+                        # 其他可能的價格標籤
+                        ".prodPrice",
+                        ".product-price", 
+                        ".prod-price",
+                        "[class*='price'] b",
+                        "[class*='price'] strong",
+                        "[class*='Price']",
+                        # 金額相關
+                        ".money",
+                        ".cost",
+                        ".amount",
+                        # 數據屬性
+                        "[data-price]",
+                        "[data-cost]"
+                    ]
+                    
+                    print("開始尋找價格元素...")
+                    
+                    # 逐一嘗試每個選擇器
+                    for selector in price_selectors:
+                        try:
+                            # 等待元素出現（較短的等待時間）
+                            page.wait_for_selector(selector, timeout=5000)
+                            elements = page.locator(selector).all()
+                            
+                            for element in elements:
+                                if element.is_visible():
+                                    price_text = element.text_content().strip()
+                                    print(f"找到價格元素 ({selector}): {price_text}")
+                                    
+                                    if price_text and any(char.isdigit() for char in price_text):
+                                        # 清理價格文字
+                                        price_num = re.sub(r'[^\d]', '', price_text)
+                                        if price_num and len(price_num) >= 2:  # 至少要有2位數
+                                            print(f"成功提取價格: {price_num}")
+                                            return price_num
+                                        
+                        except Exception as selector_error:
+                            # 不打印每個選擇器的錯誤，避免過多輸出
+                            continue
+                    
+                    print("所有選擇器都失敗，嘗試正規表達式...")
+                    
+                    # 如果選擇器都失敗，用正規表達式從頁面內容尋找
+                    try:
+                        content = page.content()
+                        
+                        # 多種價格模式
+                        price_patterns = [
+                            r'prdPrice["\']?[^>]*>.*?([0-9,]+)',
+                            r'price["\']?[^>]*>.*?([0-9,]+)', 
+                            r'NT\$\s*([0-9,]+)',
+                            r'\$\s*([0-9,]+)',
+                            r'售價[：:\s]*([0-9,]+)',
+                            r'定價[：:\s]*([0-9,]+)',
+                            r'([0-9,]+)\s*元',
+                            r'"price":\s*"?([0-9,]+)"?',
+                            r'"cost":\s*"?([0-9,]+)"?',
+                            r'data-price="([0-9,]+)"',
+                        ]
+                        
+                        for pattern in price_patterns:
+                            matches = re.findall(pattern, content, re.IGNORECASE | re.DOTALL)
+                            if matches:
+                                # 清理找到的價格
+                                for match in matches:
+                                    clean_price = re.sub(r'[^\d]', '', match)
+                                    if clean_price and len(clean_price) >= 2:
+                                        print(f"正規表達式找到價格: {match} -> {clean_price}")
+                                        return clean_price
+                                        
+                    except Exception as regex_error:
+                        print(f"正規表達式處理錯誤: {regex_error}")
+                    
+                    # 最後嘗試：截圖除錯（可選）
+                    try:
+                        # 可以暫時啟用截圖來除錯
+                        # page.screenshot(path=f"momo_debug_{code}.png")
+                        print("所有方法都失敗，無法找到價格")
+                    except:
+                        pass
+                        
+                    return None
+                    
+                except Exception as e:
+                    print(f"momo 爬蟲整體錯誤: {str(e)}")
+                    return None
 
 
 
