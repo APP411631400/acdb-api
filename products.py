@@ -139,7 +139,7 @@ def get_product_detail():
                             "sec-ch-ua-mobile": "?1",
                             "sec-ch-ua-platform": '"Android"',
                         }
-                    )  :contentReference[oaicite:1]{index=1}
+                    ) 
                     return context
                     
                 elif platform == 'pchome':
