@@ -184,6 +184,7 @@ def get_product_detail():
 
             def scrape_momo_price(page, desktop_url):
                 # 解析 i_code，轉到行動版靜態頁
+                import re
                 parsed = urlparse(desktop_url)
                 code = parse_qs(parsed.query).get('i_code', [None])[0]
                 if not code:
