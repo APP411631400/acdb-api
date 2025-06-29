@@ -124,8 +124,39 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
-                # momo 用行動裝置
-                    return browser.new_context(**p.devices['iPhone 13'])
+                    # momo 用行動裝置，並補全 is_mobile/has_touch、行動特有 headers、偽造指紋
+                    context = browser.new_context(
+                        **p.devices['iPhone 13'],
+                        is_mobile=True,
+                        has_touch=True,
+                        locale="zh-TW",
+                        timezone_id="Asia/Taipei",
+                        extra_http_headers={
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+                            "Accept-Encoding": "gzip, deflate, br",
+                            "Cache-Control": "no-cache",
+                            "Pragma": "no-cache",
+                            "DNT": "1",
+                            "Referer": "https://www.momoshop.com.tw/",
+                            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not A Brand";v="99"',
+                            "sec-ch-ua-mobile": "?1",
+                            "sec-ch-ua-platform": '"Android"',
+                        }
+                    )
+                    # 注入更完整的行動瀏覽器偽造腳本
+                    context.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
+                        Object.defineProperty(navigator, 'userAgentData', {
+                            get: () => ({ mobile: true })
+                        });
+                        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+                        Object.defineProperty(navigator, 'deviceMemory', { get: () => 4 });
+                        window.chrome = { runtime: {} };
+                    """)
+                    return context
+                    
                 elif platform == 'pchome':
                     # PChome 保持 JS，桌面 UA
                     return browser.new_context(
