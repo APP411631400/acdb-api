@@ -124,16 +124,18 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
-                    # 1. 先取得官方定義的 iPhone 13 參數（含 is_mobile, has_touch, viewport, default UA…）
-                    device = p.devices['iPhone 13']
+                    # 1. 先複製一份 iPhone13 的設定 dict
+                    device = p.devices['iPhone 13'].copy()
+                    # 2. 把原本的 user_agent 剔除，避免重複
+                    device.pop('user_agent', None)
 
-                    # 2. 自訂要使用的 User-Agent（可以是桌面或行動版的字串，以下示範使用 iPhone Safari UA）
+                    # 3. 自訂 Mobile UA
                     mobile_ua = (
                         "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) "
                         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
                     )
 
-                    # 3. 建立 context，將 user_agent 參數傳入以覆蓋 device 裡面預設的 UA
+                    # 4. unpack 剩下的 device 參數，再傳入新的 user_agent
                     context = browser.new_context(
                         **device,
                         user_agent=mobile_ua,
