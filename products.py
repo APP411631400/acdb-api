@@ -124,7 +124,9 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
+                    # 1. 直接使用官方定義的 iPhone 13 行動裝置參數（已含 is_mobile, has_touch）  
                     device = p.devices['iPhone 13']
+                    # 2. 加上必要 locale、時區、Referer 及行動 HTTP headers
                     context = browser.new_context(
                         **device,
                         locale="zh-TW",
@@ -132,26 +134,12 @@ def get_product_detail():
                         extra_http_headers={
                             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-                            "Accept-Encoding": "gzip, deflate, br",
-                            "Cache-Control": "no-cache",
-                            "Pragma": "no-cache",
-                            "DNT": "1",
                             "Referer": "https://www.momoshop.com.tw/",
                             "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not A Brand";v="99"',
                             "sec-ch-ua-mobile": "?1",
                             "sec-ch-ua-platform": '"Android"',
                         }
-                    )
-                    context.add_init_script("""
-                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
-                        Object.defineProperty(navigator, 'userAgentData', {
-                            get: () => ({ mobile: true })
-                        });
-                        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
-                        Object.defineProperty(navigator, 'deviceMemory', { get: () => 4 });
-                        window.chrome = { runtime: {} };
-                    """)
+                    )  :contentReference[oaicite:1]{index=1}
                     return context
                     
                 elif platform == 'pchome':
@@ -189,22 +177,25 @@ def get_product_detail():
             def scrape_momo_price(page, desktop_url):
                 # 解析 i_code
                 parsed = urlparse(desktop_url)
-                code   = parse_qs(parsed.query).get('i_code', [None])[0]
+                code = parse_qs(parsed.query).get('i_code', [None])[0]
                 if not code:
                     return None
 
-                # 組出行動版 URL
+                # 轉成行動版靜態 URL
                 mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
-                page.goto(mobile_url, timeout=60000, wait_until="domcontentloaded")
+                page.goto(mobile_url, timeout=60000, wait_until="networkidle")
+
+                # 明確等待價格元素出現
                 try:
-                    page.wait_for_selector(".prdPrice b", timeout=10000)
+                    page.wait_for_selector(".prdPrice b", timeout=15000)
                 except:
                     return None
 
-                # 擷取與清理價格
+                # 擷取並清理價格
                 price_text = page.locator(".prdPrice b").first.text_content().strip()
-                price_num  = re.sub(r'[^\d]', '', price_text)
+                price_num = re.sub(r'[^\d]', '', price_text)
                 return price_num or None
+
 
 
 
