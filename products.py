@@ -124,22 +124,27 @@ def get_product_detail():
             # 針對不同平台使用不同的 context 設定
             def create_context_for_platform(platform):
                 if platform == 'momo':
-                    # 1. 直接使用官方定義的 iPhone 13 行動裝置參數（已含 is_mobile, has_touch）  
+                    # 1. 先取得官方定義的 iPhone 13 參數（含 is_mobile, has_touch, viewport, default UA…）
                     device = p.devices['iPhone 13']
-                    # 2. 加上必要 locale、時區、Referer 及行動 HTTP headers
+
+                    # 2. 自訂要使用的 User-Agent（可以是桌面或行動版的字串，以下示範使用 iPhone Safari UA）
+                    mobile_ua = (
+                        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) "
+                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                    )
+
+                    # 3. 建立 context，將 user_agent 參數傳入以覆蓋 device 裡面預設的 UA
                     context = browser.new_context(
                         **device,
+                        user_agent=mobile_ua,
                         locale="zh-TW",
                         timezone_id="Asia/Taipei",
                         extra_http_headers={
                             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
                             "Referer": "https://www.momoshop.com.tw/",
-                            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not A Brand";v="99"',
-                            "sec-ch-ua-mobile": "?1",
-                            "sec-ch-ua-platform": '"Android"',
                         }
-                    ) 
+                    )
                     return context
                     
                 elif platform == 'pchome':
