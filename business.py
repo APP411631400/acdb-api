@@ -7,7 +7,7 @@ business_bp = Blueprint('business', __name__)
 # ✅ 資料庫連線字串
 conn_str = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=shoppingsystem.database.windows.net;"
+    "SERVER=shoppingsystem666.database.windows.net;"
     "DATABASE=ShoppingSystem;"
     "UID=systemgod666;"
     "PWD=Crazydog888"
