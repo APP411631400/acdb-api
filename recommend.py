@@ -13,7 +13,7 @@ AZURE_API_VERSION = "2025-01-01-preview"
 # ✅ 資料庫連線字串（與 cards.py 同一份）
 conn_str = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=shoppingsystem.database.windows.net;"
+    "SERVER=shoppingsystem666.database.windows.net;"
     "DATABASE=ShoppingSystem;"
     "UID=systemgod666;"
     "PWD=Crazydog888"
