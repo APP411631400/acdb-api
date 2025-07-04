@@ -18,7 +18,7 @@ app.register_blueprint(business_bp)
 # ✅ 資料庫連線字串（請勿公開）
 conn_str = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=shoppingsystem.database.windows.net;"
+    "SERVER=shoppingsystem666.database.windows.net;"
     "DATABASE=ShoppingSystem;"
     "UID=systemgod666;"
     "PWD=Crazydog888;"
