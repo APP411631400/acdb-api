@@ -183,42 +183,43 @@ def get_product_detail():
 
 
             def scrape_momo_price(page, desktop_url):
-                # 解析 i_code，轉到行動版靜態頁
                 import re
                 parsed = urlparse(desktop_url)
                 code = parse_qs(parsed.query).get('i_code', [None])[0]
                 if not code:
                     return None
+
                 mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
                 page.goto(mobile_url, timeout=60000, wait_until="networkidle")
 
-                # 多種價格 selector 備援
-                selectors = [
-                    ".prdPrice b",      # 舊版備援
-                    "span.price",       # 常見 class
-                    ".special-price",   # 假設 mobile 促銷價 class
-                    "[id*=price]",      # id 裡有 price 的元素
-                ]
-                price_text = None
+                # 只針對「主商品區塊」裡的 <b> 撈價格
+                MAIN_SELECTOR = "div.detail_top .prdPrice b"
+                try:
+                    page.wait_for_selector(MAIN_SELECTOR, timeout=10000)
+                    price_text = page.locator(MAIN_SELECTOR).first.text_content().strip()
+                except:
+                    # 如果真的沒撈到，再退回到泛用備援
+                    selectors = [
+                        "span.price",
+                        ".special-price",
+                        "[id*=price]",
+                    ]
+                    price_text = None
+                    for sel in selectors:
+                        try:
+                            page.wait_for_selector(sel, timeout=5000)
+                            txt = page.locator(sel).first.text_content().strip()
+                            if re.search(r"\d+", txt):
+                                price_text = txt
+                                break
+                        except:
+                            continue
 
-                for sel in selectors:
-                    try:
-                        # 等待這個 selector 出現
-                        page.wait_for_selector(sel, timeout=5000)
-                        elem = page.locator(sel).first
-                        txt = elem.text_content().strip()
-                        # 找到像 $359 這樣至少一位數就視為價格
-                        if re.search(r"\d+", txt):
-                            price_text = txt
-                            break
-                    except:
-                        continue
-
-                # 如果上述都拿不到，再從原始 HTML 用正則 fallback
                 if not price_text:
+                    # 最後再用正則從 HTML 拔一次
                     content = page.content()
                     m = re.search(r'[\$NT\￥]\s*([0-9,]+)', content)
-                    price_text = m.group(0) if m else None
+                    price_text = m.group(1) if m else None
 
                 if not price_text:
                     return None
