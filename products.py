@@ -192,20 +192,21 @@ def get_product_detail():
                 mobile_url = f"https://m.momoshop.com.tw/goods.momo?i_code={code}"
                 page.goto(mobile_url, timeout=60000, wait_until="networkidle")
 
-                # 只針對「主商品區塊」裡的 <b> 撈價格
-                MAIN_SELECTOR = "div.detail_top .prdPrice b"
+                # 2. 先用主商品區塊的精準 selector 抓價格
+                MAIN_SELECTOR = "#prdtTop span.price"
+                price_text = None
                 try:
                     page.wait_for_selector(MAIN_SELECTOR, timeout=10000)
                     price_text = page.locator(MAIN_SELECTOR).first.text_content().strip()
                 except:
-                    # 如果真的沒撈到，再退回到泛用備援
-                    selectors = [
+                    # 3. 如果主區塊沒撈到，再退回到泛用 selector 備援
+                    fallback_selectors = [
                         "span.price",
+                        ".prdPrice b",
                         ".special-price",
                         "[id*=price]",
                     ]
-                    price_text = None
-                    for sel in selectors:
+                    for sel in fallback_selectors:
                         try:
                             page.wait_for_selector(sel, timeout=5000)
                             txt = page.locator(sel).first.text_content().strip()
@@ -215,16 +216,17 @@ def get_product_detail():
                         except:
                             continue
 
+                # 4. 最後如果還沒拿到，再用正則直接從 HTML 裡找
                 if not price_text:
-                    # 最後再用正則從 HTML 拔一次
                     content = page.content()
                     m = re.search(r'[\$NT\￥]\s*([0-9,]+)', content)
                     price_text = m.group(1) if m else None
 
+                # 5. 如果真拿不到，就回 None
                 if not price_text:
                     return None
 
-                # 清理非數字
+                # 6. 清理掉非數字，只留純數字
                 price_num = re.sub(r"[^\d]", "", price_text)
                 return price_num or None
 
