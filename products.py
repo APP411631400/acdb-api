@@ -193,7 +193,7 @@ def get_product_detail():
                 page.goto(mobile_url, timeout=60000, wait_until="networkidle")
 
                 # 2. 先用主商品區塊的精準 selector 抓價格
-                MAIN_SELECTOR = "#prdtTop span.price"
+                MAIN_SELECTOR = "#currentprice"
                 price_text = None
                 try:
                     page.wait_for_selector(MAIN_SELECTOR, timeout=10000)
@@ -201,6 +201,7 @@ def get_product_detail():
                 except:
                     # 3. 如果主區塊沒撈到，再退回到泛用 selector 備援
                     fallback_selectors = [
+                        ".ec-current-price",
                         "span.price",
                         ".prdPrice b",
                         ".special-price",
