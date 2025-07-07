@@ -48,30 +48,46 @@ def get_product_info():
 
 
 
-# ✅ 根據 ProductID 取得所有規格（查 ProductSpecs）
+# ✅ 根據 ProductID 取得所有規格（查 ProductSpecs 資料表）
 @specs_bp.route("/product/specs/id", methods=["GET"])
 def get_specs_by_id():
+    # 從 GET 請求的網址參數中取得 product_id（例如：/product/specs/id?id=123）
     product_id = request.args.get("id", "")
+
     try:
+        # 建立與資料庫的連線
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
+
+        # 使用參數化查詢，防止 SQL Injection
         cursor.execute("""
-            SELECT SpecName, SpecValue, ProductName
+            SELECT ProductID, SpecName, SpecValue, ProductName
             FROM dbo.ProductSpecs
             WHERE ProductID = ?
         """, (product_id,))
+
+        # 取得查詢結果
         rows = cursor.fetchall()
+
+        # 關閉連線
         conn.close()
 
+        # 將每一筆結果轉成 dict 格式，準備回傳 JSON
         result = [
             {
+                "ProductID": row.ProductID,       # ✅ 補上 ProductID 欄位
                 "SpecName": row.SpecName,
                 "SpecValue": row.SpecValue,
                 "ProductName": row.ProductName
             }
             for row in rows
         ]
+
+        # 回傳 JSON 結果（list of specs）
         return jsonify(result)
+
     except Exception as e:
+        # 發生錯誤時回傳錯誤訊息（500 Internal Server Error）
         return jsonify({"error": str(e)}), 500
+
 
