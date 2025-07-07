@@ -14,16 +14,16 @@ conn_str = (
     "PWD=Crazydog888;"
 )
 
-# ✅ 查詢某商品的所有規格（條件模糊查詢名稱）
-@specs_bp.route("/product/specs", methods=["GET"])
-def get_product_specs():
+# ✅ 取得產品主資料（只讀 Products 表）
+@specs_bp.route("/product/info", methods=["GET"])
+def get_product_info():
     product_name = request.args.get("name", "")
     try:
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT ProductID, SpecName, SpecValue, ProductName
-            FROM dbo.ProductSpecs
+            SELECT ProductID, ProductName, Brand, ProductURL, ImageURL, Category, SubCategory, Vendor
+            FROM dbo.Products
             WHERE ProductName LIKE ?
         """, (f"%{product_name}%",))
         rows = cursor.fetchall()
@@ -32,6 +32,39 @@ def get_product_specs():
         result = [
             {
                 "ProductID": row.ProductID,
+                "ProductName": row.ProductName,
+                "Brand": row.Brand,
+                "ProductURL": row.ProductURL,
+                "ImageURL": row.ImageURL,
+                "Category": row.Category,
+                "SubCategory": row.SubCategory,
+                "Vendor": row.Vendor
+            }
+            for row in rows
+        ]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+# ✅ 根據 ProductID 取得所有規格（查 ProductSpecs）
+@specs_bp.route("/product/specs/id", methods=["GET"])
+def get_specs_by_id():
+    product_id = request.args.get("id", "")
+    try:
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT SpecName, SpecValue, ProductName
+            FROM dbo.ProductSpecs
+            WHERE ProductID = ?
+        """, (product_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        result = [
+            {
                 "SpecName": row.SpecName,
                 "SpecValue": row.SpecValue,
                 "ProductName": row.ProductName
@@ -42,29 +75,3 @@ def get_product_specs():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ✅ 比較某個規格名稱（SpecName）下不同商品的規格值
-@specs_bp.route("/compare/spec", methods=["GET"])
-def compare_spec_value():
-    spec_name = request.args.get("spec", "")
-    try:
-        conn = pyodbc.connect(conn_str)
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT ProductName, SpecValue
-            FROM dbo.ProductSpecs
-            WHERE SpecName = ?
-        """, (spec_name,))
-        rows = cursor.fetchall()
-        conn.close()
-
-        result = [
-            {
-                "ProductName": row.ProductName,
-                "SpecValue": row.SpecValue
-            }
-            for row in rows
-        ]
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
