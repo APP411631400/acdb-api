@@ -159,7 +159,7 @@ def get_all_records():
 
         # ✅ 加入 位置描述 欄位（店家名稱）
         cursor.execute("""
-            SELECT id, 商品名稱, 價格, 位置描述, 座標, 時間, 條碼, 來源
+            SELECT id, 商品名稱, 價格, 位置描述, 座標, 時間, 條碼, 來源, 使用者ID
             FROM dbo.門市商品
             ORDER BY 時間 DESC
         """)
@@ -173,6 +173,8 @@ def get_all_records():
             # ✅ 時間欄位轉換為字串（ISO 8601）
             if isinstance(record["時間"], datetime):
                 record["時間"] = record["時間"].isoformat()
+            
+            record["userId"] = record.pop("使用者ID")
             result.append(record)
 
         cursor.close()
