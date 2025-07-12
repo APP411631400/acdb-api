@@ -102,21 +102,40 @@ def delete():
         data = request.json
         print("🧪 收到刪除請求：", data)
 
-        # ✅ 強制轉為 int（避免 JSON 傳字串型別）
+        # ✅ 擷取 ID 與 userId（傳入的身份）
         try:
             record_id = int(data.get("id"))
         except:
             return jsonify({"status": "fail", "error": "id 不是有效數字"}), 400
 
+        user_id = data.get("userId", "guest").strip()  # 預設為 guest
+
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
 
+        # ✅ 查詢該筆資料的 擁有者ID
         cursor.execute("""
-            DELETE FROM dbo.門市商品
-            WHERE id = ?
+            SELECT 使用者ID FROM dbo.門市商品 WHERE id = ?
+        """, (record_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            return jsonify({"status": "fail", "error": f"查無 id {record_id}"}), 404
+
+        owner_id = (row[0] or "").strip()
+
+        # ✅ 比對是否同一個人（或都是 guest）
+        if owner_id != user_id:
+            return jsonify({
+                "status": "fail",
+                "error": f"無刪除權限，該筆資料屬於 {owner_id or 'guest'}"
+            }), 403
+
+        # ✅ 通過驗證 → 執行刪除
+        cursor.execute("""
+            DELETE FROM dbo.門市商品 WHERE id = ?
         """, (record_id,))
 
-        # ✅ 若找不到該筆資料則回傳錯誤
         if cursor.rowcount == 0:
             return jsonify({"status": "fail", "error": f"查無 id {record_id}"}), 404
 
@@ -124,11 +143,12 @@ def delete():
         cursor.close()
         conn.close()
 
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "deleted_id": record_id})
 
     except Exception as e:
         print(f"❌ 刪除錯誤：{e}")
         return jsonify({"status": "fail", "error": str(e)}), 500
+
 
 # ✅ 查詢所有回報資料（不含圖片）
 @app.route("/records", methods=["GET"])
