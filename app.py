@@ -5,6 +5,7 @@ from products import products
 from recommend import recommend
 from business import business_bp
 from specs import specs_bp
+from home_appliances_products import appliances_products
 import base64
 import pyodbc
 from datetime import datetime
@@ -16,6 +17,7 @@ app.register_blueprint(products)
 app.register_blueprint(recommend)
 app.register_blueprint(business_bp)
 app.register_blueprint(specs_bp)
+app.register_blueprint(appliances_products)
 
 # ✅ 資料庫連線字串（請勿公開）
 conn_str = (
