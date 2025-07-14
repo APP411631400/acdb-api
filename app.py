@@ -5,7 +5,7 @@ from products import products
 from recommend import recommend
 from business import business_bp
 from specs import specs_bp
-from home_appliances_products import appliances_products
+from appliances_products import appliances_products
 import base64
 import pyodbc
 from datetime import datetime
