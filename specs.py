@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 import pyodbc
 import re
 
-# 建立 Blueprint 模組
+# 建立 Blueprint 
 specs_bp = Blueprint('specs', __name__)
 
 # ✅ SQL Server 連線設定（記得保密帳密）
