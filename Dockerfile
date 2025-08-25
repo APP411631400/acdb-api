@@ -30,7 +30,7 @@ COPY . .
 # ✅ 安裝 Python 套件
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
-RUN playwright install --with-deps chromium
+RUN playwright install chromium
 
 # ✅ 設定啟動指令（注意 gunicorn 綁定 port 10000）
 CMD ["gunicorn", "app:app", "-b", "0.0.0.0:10000", "--workers", "1", "--threads", "1", "--timeout", "120"]
